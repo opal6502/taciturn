@@ -25,8 +25,6 @@ from sqlalchemy import and_
 from time import sleep
 from datetime import datetime
 
-from taciturn.applications.base import sleepmsrange
-
 from taciturn.applications.base import (
     FollowerApplicationHandler,
     ApplicationWebElements,
@@ -93,7 +91,7 @@ class TwitterHandler(FollowerApplicationHandler):
 
         print("Logged in to twitter ok!")
 
-    def start_following(self, target_account, quota=None):
+    def start_following(self, target_account, quota=None, unfollow_hiatus=None):
         print("start_following: starting up ...")
         # for a bit of misdirection ;)
         self.goto_homepage()
@@ -111,6 +109,7 @@ class TwitterHandler(FollowerApplicationHandler):
         self.e.followers_tab_link()
         tab_overlap_y = self.e.followers_tab_overlap()
 
+        unfollow_hiatus = unfollow_hiatus or self.follow_back_hiatus
         max_scan_count = 10
         followed_count = 0
 
@@ -122,6 +121,11 @@ class TwitterHandler(FollowerApplicationHandler):
             entryfile.write(follower_entry.get_attribute('innerHTML'))
 
         while quota is None or followed_count < quota:
+            
+            if self.e.is_followers_end(follower_entry):
+                print("List end encountered, stopping.")
+                return followed_count
+
             try:
                 entry_username = self.e.follower_username(follower_entry).text
             except NoSuchElementException:
@@ -176,10 +180,10 @@ class TwitterHandler(FollowerApplicationHandler):
                                  Unfollowed.name == entry_username)).one_or_none()
                 # then check if unfollow was recent:
                 if already_unfollowed is not None and \
-                        datetime.now() < already_unfollowed.established + self.unfollow_hiatus:
+                        datetime.now() < already_unfollowed.established + unfollow_hiatus:
                     print("Already followed and unfollowed this user '{}', "
                           "will follow again after {}".format(entry_username,
-                                                              already_unfollowed.established + self.unfollow_hiatus))
+                                                              already_unfollowed.established + unfollow_hiatus))
                     continue
 
                 print("Clicking 'Follow' button ...")
@@ -212,7 +216,7 @@ class TwitterHandler(FollowerApplicationHandler):
                 self.session.commit()
                 print("Follow added to database.")
 
-                sleepmsrange(self.action_timeout)
+                self.sleepmsrange(self.action_timeout)
 
                 followed_count += 1
 
@@ -226,41 +230,51 @@ class TwitterHandler(FollowerApplicationHandler):
             follower_entry = self.e.next_follower_entry(follower_entry)
 
             # give the list scrolling a chance to catch up:
-            sleepmsrange(self.action_timeout)
+            # self.sleepmsrange(self.action_timeout)
 
         return followed_count
 
     def update_followers(self):
+        # print(" GET {}/{}/following".format(self.application_url, self.app_username))
         self.driver.get("{}/{}/followers".format(self.application_url, self.app_username))
 
-        # verify "Followers" tab present ...
-        self.e.followers_tab_link()
-        # scan the overlapping tab y-dimension ...
-        tab_overlap_y = self.e.followers_tab_overlap()
+        follower_entry = self.e.first_follower_entry()
+        print("follower_entry =", follower_entry)
+        entries_added = 0
 
-        # start the account follower scan loop ...
-        last_follower_n = 1
         while True:
-            # scan follower element:
-            for n in range(1, self.default_load_retries):
-                try:
-                    follower_entry_element = self.e.follower_entry(last_follower_n)
-                    self.scrollto_element(follower_entry_element, offset=tab_overlap_y)
-                except NoSuchElementException as e:
-                    print("start_following, find_element(follower_entry): NoSuchElementException")
-                    continue
-            else:
-                if follower_entry_element is None:
-                    raise AppWebElementException(
-                        "start_following, find_element(follower_entry): Couldn't scan after {} tries.".format(n))
+            # check to see if this looks like the end:
+            if self.e.is_followers_end(follower_entry):
+                print("List end encountered, stopping.")
+                return entries_added
 
-            follower_username = self.e.follower_username(last_follower_n).text.lstrip('@')
-            follower_button = self.e.follower_button(last_follower_n)
+            # check to see if entry is in the database:
+            self.scrollto_element(follower_entry)
+            follower_username = self.e.follower_username(follower_entry).text
+            print("Scanning {} ...".format(follower_username))
 
-            # XXX next, check db for follower, add if not present with 'first scan timestamp' = now ...
-            # Strictly speaking this is not necessary, because the ui tells you what followers
-            # are mutual, but still it's a nice exercise to do it ourselves, too, because we can
-            # and maybe we should, to be more self-reliant?
+            following_db = self.session.query(Follower)\
+                                    .filter(and_(Follower.user_id == self.app_account.user_id,
+                                                 Follower.application_id == self.app_account.application_id,
+                                                 Follower.name == follower_username
+                                            )).one_or_none()
+
+            if following_db is None:
+                print("No entry for '{}', creating.".format(follower_username))
+                new_follower = Follower(name=follower_username,
+                                        established=datetime.now(),
+                                        application_id=self.app_account.application_id,
+                                        user_id=self.app_account.user_id)
+                self.session.add(new_follower)
+                self.session.commit()
+                entries_added += 1
+
+            try:
+                follower_entry = self.e.next_follower_entry(follower_entry)
+            except NoSuchElementException:
+                break
+
+        return entries_added
 
     def update_following(self):
         # print(" GET {}/{}/following".format(self.application_url, self.app_username))
@@ -271,8 +285,14 @@ class TwitterHandler(FollowerApplicationHandler):
         entries_added = 0
 
         while True:
+            # check to see if this looks like the end:
+            if self.e.is_followers_end(following_entry):
+                print("List end encountered, stopping.")
+                return entries_added
+
             # check to see if entry is in the database:
             self.scrollto_element(following_entry)
+
             following_username = self.e.follower_username(following_entry).text
             print("Scanning {} ...".format(following_username))
 
@@ -521,18 +541,21 @@ class TwitterHandlerWebElements(ApplicationWebElements):
         finally:
             self.driver.implicitly_wait(self.implicit_default_wait)
 
-    def is_followers_end_present(self):
+    def is_followers_end(self, follower_entry):
         try:
             self.driver.implicitly_wait(0)
-            return self.driver.find_element(
+            e = follower_entry.find_element(
                 By.XPATH,
-                self._follower_entries_xpath_prefix + '[last()]/div/div[not(text())]'
+                './div/div[not(node())]'
             ).text
+            return True
         except NoSuchElementException:
             print("bottom_notify_popover_text: NoSuchElementException")
-            return None
+            return False
         finally:
             self.driver.implicitly_wait(self.implicit_default_wait)
+        return False
+
 
 # twitter specific exceptions:
 

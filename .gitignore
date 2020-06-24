@@ -2,6 +2,9 @@
 # Created by https://www.toptal.com/developers/gitignore/api/python,database,images,macos,windows,linux
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,database,images,macos,windows,linux
 
+## local junk:
+db/
+
 ### Database ###
 *.accdb
 *.db

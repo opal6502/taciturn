@@ -66,8 +66,10 @@ config = load_config()
 engine = config['database_engine']
 session = Session(bind=engine)
 
-def warn(*args):
-    print(*args, file=sys.stderr)
+
+def warn(*args, **kwargs):
+    print(*args, **kwargs)
+    #print(*args, file=sys.stderr, **kwargs)
 
 
 def list_apps(app_name=None):

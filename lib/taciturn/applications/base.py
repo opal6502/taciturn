@@ -114,18 +114,20 @@ class BaseApplicationHandler(ABC):
             default_image or os.path.join(self.app_asset_prefix(),
                                           default_image or self.default_profile_image))
 
-    def scrollto_element(self, element, offset=0):
+    def scrollto_element(self, element, offset=None):
         self.driver.execute_script("arguments[0].scrollIntoView(true);", element)
-        scroll_position = self.driver.execute_script("return document.documentElement.scrollTop;")
-        self.driver.execute_script("window.scrollTo(0, arguments[0]);", scroll_position - offset)
+        if offset is not None:
+            scroll_position = self.driver.execute_script("return document.documentElement.scrollTop;")
+            self.driver.execute_script("window.scrollTo(0, arguments[0]);", scroll_position - offset)
 
-    def sleep_range(self, r):
-        if isinstance(r, int):
-            time.sleep(random.randrange(r))
-        elif isinstance(r, tuple) and len(r) == 2:
-            time.sleep(random.randrange(r[0], r[1]))
+    @staticmethod
+    def sleepmsrange(r):
+        if isinstance(r, tuple) and len(r) == 2:
+            time.sleep(random.randrange(r[0], r[1]) / 1000)
+        elif isinstance(r, numbers.Number):
+            time.sleep(r / 1000)
         else:
-            raise TypeError("Input must be an int or tuple of two ints!")
+            raise TypeError("sleepmsrange: takes one integer or a two-tuple of millisecond values.")
 
     @staticmethod
     def image_cmp(image1_path, image2_path):
@@ -179,7 +181,7 @@ class ApplicationWebElements(ABC):
 
 class FollowerApplicationHandler(BaseApplicationHandler):
     @abstractmethod
-    def start_following(self, target_account, quota=None, follow_back_hiatus=None):
+    def start_following(self, target_account, quota=None, unfollow_hiatus=None):
         "start following the followers of target_account"
         raise NotImplementedError
 
@@ -194,7 +196,7 @@ class FollowerApplicationHandler(BaseApplicationHandler):
         pass
 
     @abstractmethod
-    def start_unfollow(self, quota=None, unfollow_hiatus=None):
+    def start_unfollow(self, quota=None, follow_back_hiatus=None):
         "scan followers, and unfollow accounts that we've been following for a time, and don't follow us back!"
         raise NotImplementedError
 
@@ -239,10 +241,3 @@ class AppWebElementException(AppRetryLimitException):
 
 # utility functions:
 
-def sleepmsrange(r):
-    if isinstance(r, tuple) and len(r) == 2:
-        time.sleep(random.randrange(r[0], r[1])/1000)
-    elif isinstance(r, numbers.Number):
-        time.sleep(r/1000)
-    else:
-        raise TypeError("sleepmsrange: takes one integer or a two-tuple of millisecond values.")
