@@ -179,7 +179,7 @@ class ApplicationWebElements(ABC):
 
 class FollowerApplicationHandler(BaseApplicationHandler):
     @abstractmethod
-    def start_following(self, target_account, quota=None):
+    def start_following(self, target_account, quota=None, follow_back_hiatus=None):
         "start following the followers of target_account"
         raise NotImplementedError
 
@@ -189,7 +189,12 @@ class FollowerApplicationHandler(BaseApplicationHandler):
         raise NotImplementedError
 
     @abstractmethod
-    def start_unfollow(self, quota=None):
+    def update_following(self):
+        "scan who we are following, if an entry is unexpected, we add it and timespamp it if it's not whitelisted"
+        pass
+
+    @abstractmethod
+    def start_unfollow(self, quota=None, unfollow_hiatus=None):
         "scan followers, and unfollow accounts that we've been following for a time, and don't follow us back!"
         raise NotImplementedError
 
