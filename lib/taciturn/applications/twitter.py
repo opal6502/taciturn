@@ -42,6 +42,13 @@ from taciturn.db.followers import (
     Unfollowed
 )
 
+from taciturn.db.base import (
+    User,
+    Application,
+)
+
+BUTTON_TEXT_FOLLOWING = ('Following', 'Pending', 'Cancel', 'Unfollow')
+
 
 class TwitterHandler(FollowerApplicationHandler):
     application_name = 'twitter'
@@ -54,8 +61,8 @@ class TwitterHandler(FollowerApplicationHandler):
 
     follow_random_wait = (10, 60)
 
-    def __init__(self, db_session, app_username, app_password, elements=None):
-        super().__init__(db_session, app_username, app_password, TwitterHandlerWebElements)
+    def __init__(self, db_session, app_account, elements=None):
+        super().__init__(db_session, app_account, TwitterHandlerWebElements)
         self.goto_homepage()
 
         self.follow_back_hiatus = self.config['app:twitter']['follow_back_hiatus']
@@ -76,8 +83,10 @@ class TwitterHandler(FollowerApplicationHandler):
         self.e.login_password_input().send_keys(self.app_password)
         self.e.login_button().click()
 
-        profile_link = self.e.home_profile_link().get_attribute('href')
-        profile_link_expected = self.application_url + '/' + self.app_username
+        profile_link = self.e.home_profile_link().get_attribute('href').lower()
+        profile_link_expected = self.application_url + '/' + self.app_username.lower()
+        print("login: profile_link =", profile_link)
+        print("login: profile_link_expected =", profile_link_expected)
         if profile_link != profile_link_expected:
             raise AppLoginException("Couldn't verify login profile link, href '{}' doesn't match '{}'"
                                     .format(profile_link, profile_link_expected))
@@ -85,6 +94,7 @@ class TwitterHandler(FollowerApplicationHandler):
         print("Logged in to twitter ok!")
 
     def start_following(self, target_account, quota=None):
+        print("start_following: starting up ...")
         # for a bit of misdirection ;)
         self.goto_homepage()
         sleep(2)
@@ -92,6 +102,148 @@ class TwitterHandler(FollowerApplicationHandler):
         sleep(2)
         self.driver.get("{}/{}".format(self.application_url, target_account))
         sleep(2)
+
+        print("start_following: going to target account ...")
+
+        # ... then get the page we want:
+        self.driver.get("{}/{}/followers".format(self.application_url, target_account))
+
+        self.e.followers_tab_link()
+        tab_overlap_y = self.e.followers_tab_overlap()
+
+        max_scan_count = 10
+        followed_count = 0
+
+        follower_entry = self.e.first_follower_entry()
+        print("follower_entry =", follower_entry)
+
+        with open("first.html", 'w') as entryfile:
+            print("Writing element innerHTML to entry.html!")
+            entryfile.write(follower_entry.get_attribute('innerHTML'))
+
+        while quota is None or followed_count < quota:
+            try:
+                entry_username = self.e.follower_username(follower_entry).text
+            except NoSuchElementException:
+                with open("entry.html", 'w') as entryfile:
+                    print("Writing element innerHTML to entry.html!")
+                    entryfile.write(follower_entry.get_attribute('innerHTML'))
+                raise
+
+            self.scrollto_element(follower_entry, offset=tab_overlap_y)
+
+            # extract entry fields, continue'ing asap to avoid unnecessary scanning:
+            entry_button = self.e.follower_button(follower_entry)
+            # already following, skip:1
+            if entry_button.text in BUTTON_TEXT_FOLLOWING:
+                print("start_following: already following, skip ...")
+                # XXX cross reference with database here?
+                follower_entry = self.e.next_follower_entry(follower_entry)
+                continue
+            # default image, skip:
+            entry_image_src = self.e.follower_image(follower_entry).get_attribute('src')
+            entry_is_default_image = self.is_default_image(entry_image_src)
+            if entry_is_default_image:
+                print("start_following: image is default, skip ...")
+                follower_entry = self.e.next_follower_entry(follower_entry)
+                continue
+
+            entry_button_text = entry_button.text
+
+            print("start_following: entry_username =", entry_username)
+            print("start_following: entry_button_text =", entry_button_text)
+            print("start_following: entry_button_text default? ", entry_is_default_image)
+
+            # try to follow:
+            if entry_button_text == 'Follow':
+                print("start_following: checking records before following ...")
+                # check to see if we're already (supposed to be following) this user:
+                already_following = self.session.query(Following) \
+                    .filter(and_(Following.name == entry_username,
+                                 Following.user_id == self.app_account.user_id,
+                                 Following.application_id == self.app_account.application_id)) \
+                    .one_or_none()
+                # if we find a record, it's contradicting what twitter is telling us, so delete it:
+                if already_following is not None:
+                    print("Warning: user '{}' already recorded as following?"
+                          "  Deleting stale record.".format(entry_username))
+                    self.session.delete(already_following)
+
+                # check to see if we've recently unfollowed this user:
+                already_unfollowed = self.session.query(Unfollowed) \
+                    .filter(and_(Unfollowed.user_id == self.app_account.user_id,
+                                 Unfollowed.application_id == self.app_account.application_id,
+                                 Unfollowed.name == entry_username)).one_or_none()
+                # then check if unfollow was recent:
+                if already_unfollowed is not None and \
+                        datetime.now() < already_unfollowed.established + self.unfollow_hiatus:
+                    print("Already followed and unfollowed this user '{}', "
+                          "will follow again after {}".format(entry_username,
+                                                              already_unfollowed.established + self.unfollow_hiatus))
+                    continue
+
+                print("Clicking 'Follow' button ...")
+
+                entry_button.click()
+                sleep(1)
+
+                # XXX bug: if the blocked notify shows up, it will stay here for several seconds
+                # and followers below that entry will show up as blocked unless we wait for the blocked
+                # popover to go away.
+                if self.e.is_follower_blocked_notify_present():
+                    follower_entry = self.e.next_follower_entry(follower_entry)
+                    print("Blocked by user.")
+                    WebDriverWait(self.driver, timeout=60).until(self.e.blocked_notice_gone_cb())
+                    continue
+
+                if self.e.is_follower_limit_notify_present():
+                    print("Unable to follow more at this time!")
+                    return followed_count
+
+                WebDriverWait(self.driver, timeout=60).until(self.e.follow_click_verify_cb(follower_entry))
+                print("Follow verified.")
+
+                new_following = Following(name=entry_username,
+                                          application_id=self.app_account.application_id,
+                                          user_id=self.app_account.user_id,
+                                          established=datetime.now())
+
+                self.session.add(new_following)
+                self.session.commit()
+                print("Follow added to database.")
+
+                sleepmsrange(self.action_timeout)
+
+                followed_count += 1
+
+            elif entry_button_text in BUTTON_TEXT_FOLLOWING:
+                # do nothing!
+                pass
+            else:
+                raise AppUnexpectedStateException(
+                    "Entry button for '{}' says '{}'?".format(entry_username, entry_button.text))
+
+            follower_entry = self.e.next_follower_entry(follower_entry)
+
+            # give the list scrolling a chance to catch up:
+            sleepmsrange(self.action_timeout)
+
+        return followed_count
+
+
+
+
+    def old_start_following(self, target_account, quota=None):
+        print("start_following: starting up ...")
+        # for a bit of misdirection ;)
+        self.goto_homepage()
+        sleep(2)
+        self.goto_user_page()
+        sleep(2)
+        self.driver.get("{}/{}".format(self.application_url, target_account))
+        sleep(2)
+
+        print("start_following: going to target account ...")
 
         # ... then get the page we want:
         self.driver.get("{}/{}/followers".format(self.application_url, target_account))
@@ -106,11 +258,16 @@ class TwitterHandler(FollowerApplicationHandler):
         while quota is None or followed_count < quota:
 
             # scan, and re-scan for follower entries:
+
+            print("start_following: scanning follower entries ...")
             follower_entries = self.e.follower_entries()
+            print("start_following: scanned {} entries ...".format(len(follower_entries)))
             follower_entry_n = 0
 
             # skip ahead to next entry:
             if last_username:
+                print("start_following: skipping ahead to '{}' ...".format(last_username))
+
                 # skip ahead to next entry to be scanned:
                 def scan_for_next_entry(fe, name):
                     for n in range(len(fe)):
@@ -120,6 +277,7 @@ class TwitterHandler(FollowerApplicationHandler):
                                 return fe[n + 1], n + 1
                             elif n + 1 > len(fe):
                                 return None, 0
+                        # n += 1
 
                 follower_entry, follower_entry_n = scan_for_next_entry(follower_entries, last_username)
                 if follower_entry is None:
@@ -131,48 +289,70 @@ class TwitterHandler(FollowerApplicationHandler):
                         print("Followers end is present, returning.")
                         return followed_count
                 else:
-                    raise AppDataAnchorMissingException(
-                        "Last entry for '{}' not found in entry scan!".format(last_username))
+                    self.scrollto_element(follower_entry, offset=tab_overlap_y)
+                    e = self.e.follower_username(follower_entry)
+                    print("Resuming scan at {}, position {}".format(e.text, follower_entry_n))
 
             # process entries:
-            while follower_entry_n < len(follower_entries):
+            while follower_entry_n < len(follower_entries)-1:
                 # get element and scroll to it:
+                print("start_following: getting next follower entry ...")
+                print("start_following: follower_entry_n =", follower_entry_n)
+
                 follower_entry = follower_entries[follower_entry_n]
+                try:
+                    entry_username = self.e.follower_username(follower_entry).text
+                except NoSuchElementException:
+                    with open("entry.html", 'w') as entryfile:
+                        print("Writing element innerHTML to entry.html!")
+                        entryfile.write(follower_entry.get_attribute('innerHTML'))
+                    raise
+
                 self.scrollto_element(follower_entry, offset=tab_overlap_y)
 
                 # extract entry fields, continue'ing asap to avoid unnecessary scanning:
                 entry_button = self.e.follower_button(follower_entry)
-                # already following, skip:
-                if entry_button.text in ('Following', 'Pending'):
+                # already following, skip:1
+                if entry_button.text in BUTTON_TEXT_FOLLOWING:
+                    print("start_following: already following, skip ...")
                     # XXX cross reference with database here?
+                    last_username = entry_username
                     follower_entry_n += 1
                     continue
                 # default image, skip:
                 entry_image_src = self.e.follower_image(follower_entry).get_attribute('src')
-                if self.is_default_image(entry_image_src):
+                entry_is_default_image = self.is_default_image(entry_image_src)
+                if entry_is_default_image:
+                    print("start_following: image is default, skip ...")
+                    last_username = entry_username
                     follower_entry_n += 1
                     continue
 
-                entry_username = self.e.follower_username(follower_entry).text
                 entry_button_text = entry_button.text
+
+                print("start_following: entry_username =", entry_username)
+                print("start_following: entry_button_text =", entry_button_text)
+                print("start_following: entry_button_text default? ", entry_is_default_image)
 
                 # try to follow:
                 if entry_button_text == 'Follow':
+                    print("start_following: checking records before following ...")
                     # check to see if we're already (supposed to be following) this user:
                     already_following = self.session.query(Following)\
-                                            .filter(and_(Following.name == entry_username,
-                                                         Following.user_id == self.db_user.id,
-                                                         Following.application_id == self.db_app.id)).one_or_none()
+                                .filter(and_(Following.name == entry_username,
+                                             Following.user_id == self.app_account.user_id,
+                                             Following.application_id == self.app_account.application_id))\
+                                .one_or_none()
                     # if we find a record, it's contradicting what twitter is telling us, so delete it:
-                    if already_following:
+                    if already_following is not None:
                         print("Warning: user '{}' already recorded as following?"
                               "  Deleting stale record.".format(entry_username))
                         self.session.delete(already_following)
 
                     # check to see if we've recently unfollowed this user:
                     already_unfollowed = self.session.query(Unfollowed)\
-                                            .filter(and_(Unfollowed.user_id == self.db_user.id,
-                                                         Unfollowed.application_id == self.db_app.id,
+                                            .filter(and_(Unfollowed.user_id == self.app_account.user_id,
+                                                         Unfollowed.application_id == self.app_account.application_id,
                                                          Unfollowed.name == entry_username)).one_or_none()
                     # then check if unfollow was recent:
                     if already_unfollowed is not None and \
@@ -187,21 +367,29 @@ class TwitterHandler(FollowerApplicationHandler):
                     entry_button.click()
                     sleep(1)
 
+                    # XXX bug: if the blocked notify shows up, it will stay here for several seconds
+                    # and followers below that entry will show up as blocked unless we wait for the blocked
+                    # popover to go away.
+                    if self.e.is_follower_blocked_notify_present():
+                        last_username = entry_username
+                        follower_entry_n += 1
+                        print("Blocked by user.")
+                        WebDriverWait(self.driver, timeout=60).until(self.e.blocked_notice_gone_cb())
+                        continue
+
                     if self.e.is_follower_limit_notify_present():
                         print("Unable to follow more at this time!")
                         return followed_count
 
-                    WebDriverWait(self.driver, timeout=60).until(self.e.follow_click_verify_cb(entry_button))
+                    WebDriverWait(self.driver, timeout=60).until(self.e.follow_click_verify_cb(follower_entry))
                     print("Follow verified.")
 
                     new_following = Following(name=entry_username,
-                                              application_id=self.db_app.id,
-                                              user_id=self.db_user.id,
+                                              application_id=self.app_account.application_id,
+                                              user_id=self.app_account.user_id,
                                               established=datetime.now())
 
                     self.session.add(new_following)
-                    if already_following is not None:
-                        self.session.delete(already_unfollowed)
                     self.session.commit()
                     print("Follow added to database.")
 
@@ -209,105 +397,20 @@ class TwitterHandler(FollowerApplicationHandler):
 
                     followed_count += 1
 
-                elif entry_button_text in ('Following', 'Pending'):
+                elif entry_button_text in BUTTON_TEXT_FOLLOWING:
                     # do nothing!
                     pass
                 else:
                     raise AppUnexpectedStateException(
                         "Entry button for '{}' says '{}'?".format(entry_username, entry_button.text))
 
+                last_username = entry_username
                 follower_entry_n += 1
 
             # give the list scrolling a chance to catch up:
             sleepmsrange(self.action_timeout)
 
         return followed_count
-
-
-    def old_start_following(self, target_account, quota=None):
-        self.driver.get("{}/{}/followers".format(self.application_url, target_account))
-
-        # verify "Followers" tab present ...
-        self.e.followers_tab_link()
-        # scan the overlapping tab y-dimension ...
-        tab_overlap_y = self.e.followers_tab_overlap()
-
-        # start the account following loop ...
-        last_follower_n = 1
-        while True:
-            # debug sleep:
-            sleep(5)
-
-            # # because skipping can cause scrolling to go too fast, we periodically do a catch up:
-            # if last_follower_n % 40 == 0:
-            #     print("Scroll wait!")
-            #     sleep(3)
-            #     WebDriverWait(self.driver, timeout=60).until(
-            #         lambda x: self.e.follower_entry(last_follower_n))
-
-            # check the follower entry count:
-            print("follower entry count: ", self.e.count_follower_entries())
-
-            # scan follower element:
-            for n in range(1, self.default_load_retries):
-                try:
-                    follower_entry_element = self.e.follower_entry(last_follower_n)
-                    self.scrollto_element(follower_entry_element, offset=tab_overlap_y)
-                    break
-                except NoSuchElementException as e:
-                    print("start_following, find_element(follower_entry): NoSuchElementException")
-                    continue
-            else:
-                if follower_entry_element is None:
-                    raise AppWebElementException(
-                        "start_following, find_element(follower_entry): Couldn't scan after {} tries.".format(n))
-
-            # scan follower username:
-            follower_username = self.e.follower_username(last_follower_n).text.lstrip('@')
-
-            # check if we can quickly skip this entry:
-            follower_button = self.e.follower_button(last_follower_n)
-            if follower_button.text in ('Following', 'Pending'):
-                print("Skipping {} [{}] state '{}' ...".format(follower_username, last_follower_n, follower_button.text))
-                last_follower_n += 1
-                continue
-
-            follower_image = self.e.follower_image(last_follower_n).get_attribute('src')
-            is_default_image = self.is_default_image(follower_image)
-            if is_default_image:
-                print("Skipping {} [{}] default image ...".format(follower_username, last_follower_n))
-                last_follower_n += 1
-                continue
-
-            print("Follower image: ", follower_image)
-            print("Follower username: ", follower_username)
-            print("Follower button: ", follower_button.text)
-            print("Is follower verified?", self.e.follower_is_verified(last_follower_n))
-            print("Is image default?", is_default_image)
-
-            # try to click follow:
-            if follower_button.text == 'Follow':
-                # when we commit to clicking, we want to make sure the entry is fully loaded ?
-                # WebDriverWait(self.driver, timeout=60).until(
-                #     lambda x: self.e.follower_entry(last_follower_n))
-
-                print("Clicking Follow ...")
-                follower_button.click()
-                # quickly check for limit popover ...
-                if self.e.is_follower_limit_notify_present():
-                    raise TwitterFollowLimitException("Follow limit reached!")
-                # then ... wait and verify that button text changes to 'Following' or 'Requested' ...
-                WebDriverWait(self.driver, timeout=60).until(self.e.follow_click_verify_cb(last_follower_n))
-                print("Follow verified.")
-
-                # XXX next, add follower entry to database with 'followed timestamp' = now
-                # make note if response was 'followed' or 'pending'
-
-
-            print('-'*72)
-
-            # finally, increment the follower position:
-            last_follower_n += 1
 
     def update_followers(self):
         self.driver.get("{}/{}/followers".format(self.application_url, self.app_username))
@@ -349,10 +452,17 @@ class TwitterHandlerWebElements(ApplicationWebElements):
     # //*[@id="react-root"]/div/div/div[2]/main/div/div/div/div[1]/div/div[2]/section/div/div/div/div[N]
     # /section aria-labeledby="accessible-list-0" /div aria-label="Timeline: Followers"
     _follower_entries_xpath_prefix = '//section[starts-with(@aria-labelledby, "accessible-list-")]'\
-                                     '/div[@aria-label="Timeline: Followers"]/div/div'
+                                     '/div[@aria-label="Timeline: Followers"]/div/div/div'
+
+    _follower_first_follower_entry = '//section[starts-with(@aria-labelledby, "accessible-list-")]/div[@aria-label="Timeline: Followers"]/div/div/div[1]'
 
     # def _follower_entry_xpath_prefix(self, n=1):
     #   return self.follower_xpath_prefix + '/div[{}]'.format(n)
+    def first_follower_entry(self):
+        return self.driver.find_element(By.XPATH, self._follower_first_follower_entry)
+
+    def next_follower_entry(self, follower_entry):
+        return follower_entry.find_element(By.XPATH, './following-sibling::div[1]')
 
     def follower_entries(self):
         return self.driver.find_elements(By.XPATH, self._follower_entries_xpath_prefix)
@@ -366,19 +476,22 @@ class TwitterHandlerWebElements(ApplicationWebElements):
     def follower_image(follower_entry):
         # prefix + /div/div/div/div[1]/div/a/div[1]/div[2]/div/img
         return follower_entry.find_element(
-            By.XPATH, './/div/div/div/div[1]/div/a/div[1]/div[2]/div/img')
+            By.XPATH, './div/div/div/div[1]/div/a/div[1]/div[2]/div/img')
 
     @staticmethod
     def follower_username(follower_entry):
-        # prefix + /div/div/div/div[2]/div/div[1]/a/div/div[2]/div/span
+        # ./div/div/div/div[2]/div/div[1]/a/div/div[2]/div/span
+        # Another path seen on twitter:
+        # ./div/div/div/div[2]/div/div[1]/a/div/div/div[1]/span/span
         return follower_entry.find_element(
-            By.XPATH, './/div/div/div/div[2]/div/div[1]/a/div/div[2]/div/span')
+            By.XPATH, './div/div/div/div[2]/div/div[1]/a/div/div[2]/div/span | '
+                      './div/div/div/div[2]/div/div[1]/a/div/div/div[1]/span/span')
 
     @staticmethod
     def follower_button(follower_entry):
         # prefix + /div/div/div/div[2]/div/div[2]/div/div/span/span
         return follower_entry.find_element(
-            By.XPATH, './/div/div/div/div[2]/div/div[2]/div/div/span/span')
+            By.XPATH, './div/div/div/div[2]/div/div[2]/div/div/span/span')
 
     def follower_is_verified(self, follower_entry):
         # prefix + /div/div/div/div[2]/div[1]/div[1]/a/div/div[1]/div[2]/svg
@@ -389,7 +502,7 @@ class TwitterHandlerWebElements(ApplicationWebElements):
             WebDriverWait(follower_entry, 0.5, poll_frequency=1).until(
                 EC.presence_of_element_located((
                     By.XPATH,
-                    './/div/div/div/div[2]/div[1]/div[1]/a/div/div[1]/div[2]/'
+                    './div/div/div/div[2]/div[1]/div[1]/a/div/div[1]/div[2]/'
                     '*[local-name() = "svg" and @aria-label="Verified account"]'
                 )))
         except NoSuchElementException:
@@ -447,11 +560,13 @@ class TwitterHandlerWebElements(ApplicationWebElements):
         )
         return tab_element.size['height']
 
-    @staticmethod
-    def follow_click_verify_cb(follow_button):
+    def follow_click_verify_cb(self, follower_entry):
         def follow_click_verify(x):
-            t = follow_button.text
-            r = t in ('Following', 'Pending')
+            print("follow_click_verify_cb: rescanning button text.")
+            b = self.follower_button(follower_entry)
+            t = b.text
+            print("follow_click_verify_cb: button text =", t)
+            r = t in BUTTON_TEXT_FOLLOWING
             print("follow_click_verify, text: ", t)
             print("follow_click_verify, result: ", r)
             return r
@@ -481,6 +596,26 @@ class TwitterHandlerWebElements(ApplicationWebElements):
         if text is not None and text == 'You are unable to follow more people at this time.':
             return True
         return False
+
+    def is_follower_blocked_notify_present(self):
+        text = self.bottom_notify_popover_text()
+        if text is not None and text == 'You have been blocked from following this user at their request.':
+            return True
+        return False
+
+    def blocked_notice_gone_cb(self):
+        def check_block_notice(x):
+            try:
+                self.driver.implicitly_wait(0)
+                text = self.bottom_notify_popover_text()
+                if text is not None and text == 'You have been blocked from following this user at their request.':
+                    return False
+            except NoSuchElementException:
+                return True
+            finally:
+                self.driver.implicitly_wait(self.implicit_default_wait)
+            return True
+        return check_block_notice
 
     # Scan for account restrictions:
     def account_restricted(self):

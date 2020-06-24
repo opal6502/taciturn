@@ -37,12 +37,12 @@ class User(ORMBase):
     __tablename__ = 'user'
 
     id = Column(Integer, primary_key=True)
-    application_id = Column(Integer, ForeignKey('application.id'))
-    application = relationship('Application', backref='users')
+    # application_id = Column(Integer, ForeignKey('application.id'))
+    # application = relationship('Application', backref='users')
 
     # XXX need to create a constraint where every app & user pair must be unique!
     established = Column(DateTime, nullable=False)
-    name = Column(String(500), nullable=False)
+    name = Column(String(500), unique=True, nullable=False)
 
     # a user will just be a way of grouping app accounts:
     # password = Column(String(500), nullable=False)

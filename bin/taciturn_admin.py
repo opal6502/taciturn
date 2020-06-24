@@ -267,11 +267,36 @@ def add_user_account(user_name, app_name, account_name):
 
 
 def delete_user_account(user_name, app_name, account_name):
-    raise NotImplementedError("Write me!")
+    account = session.query(AppAccount).filter(and_(AppAccount.name == account_name,
+                                                    Application.name == app_name,
+                                                    AppAccount.user_id == User.id,
+                                                    AppAccount.application_id == Application.id)).one_or_none()
+    if account is None:
+        warn("No account '{}' for user '{}' on app '{}'".format(account_name, user_name, app_name))
+        return False
 
+    session.delete(account)
+    session.commit()
+
+    print("Deleted account '{}' for '{}' on app '{}'".format(account_name, user_name, app_name))
+    return True
 
 def password_user_account(user_name, app_name, account_name):
-    raise NotImplementedError("Write me!")
+    account = session.query(AppAccount).filter(and_(AppAccount.name == account_name,
+                                                    Application.name == app_name,
+                                                    AppAccount.user_id == User.id,
+                                                    AppAccount.application_id == Application.id)).one_or_none()
+    if account is None:
+        warn("No account '{}' for user '{}' on app '{}'".format(account_name, user_name, app_name))
+        return False
+
+    account_password = input_account_password()
+    account.password = account_password
+
+    session.commit()
+
+    print("New password for account '{}' for user '{}' on app '{}'".format(account_name, user_name, app_name))
+    return True
 
 
 def input_account_password():

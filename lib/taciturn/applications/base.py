@@ -68,13 +68,15 @@ class BaseApplicationHandler(ABC):
     db_engine = None
     db_session = None
 
-    def __init__(self, db_session, app_username, app_password, elements=None):
+    def __init__(self, db_session, app_account, elements=None):
         # database rows, as SQLAlchemy objects:
-        self.app_db = None
-        self.user_db = None
+        # self.app_db = None
+        # self.user = None
 
-        self.app_username = app_username
-        self.app_password = app_password
+        self.session = db_session
+        self.app_username = app_account.name
+        self.app_password = app_account.password
+        self.app_account = app_account
 
         self.config = load_config()
 
@@ -87,17 +89,6 @@ class BaseApplicationHandler(ABC):
         else:
             print("Warning: it's a good idea to use the ApplicationWebElements pattern for your webelement selectors!")
 
-        self.session = db_session
-        self._init_db()
-
-    def _init_db(self):
-        # scan for self.app_name in Applications ...
-        self.db_app = self.session.query(Application).\
-            filter_by(name=self.application_name).one()
-        # load user for app:
-        self.db_user = self.session.query(User).\
-            filter(self.db_app.id == User.application_id).\
-            filter_by(name=self.app_username).one()
 
     def quit(self):
         self.driver.quit()

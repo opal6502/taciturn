@@ -24,6 +24,9 @@ from importlib.machinery import SourceFileLoader
 from taciturn.db.base import ORMBase
 from taciturn.config import load_config
 
+from taciturn.db.base import User, Application, AppAccount
+
+from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
 
@@ -34,10 +37,32 @@ class TaciturnJob(ABC):
         self.options = options
         self.config = config or load_config()
 
+        self.appnames = None
+        self.username = None
+
         if 'database_engine' in self.config:
             self.session = Session(bind=self.config['database_engine'])
         else:
             raise TypeError("No 'database_engine' provided by config!")
+
+    def load_accounts(self):
+        for app_name in self.appnames:
+            app_account = self.session.query(AppAccount).\
+                filter(and_(AppAccount.application_id == Application.id,
+                            AppAccount.user_id == User.id,
+                            User.name == self.username,
+                            Application.name == app_name
+                            )).one_or_none()
+            if app_account is None:
+                raise RuntimeError("User '{}' has no '{}' account.".format(self.username, app_name))
+            else:
+                self.accounts[app_name] = app_account
+
+    def get_account(self, app_name):
+        try:
+            return self.accounts[app_name]
+        except KeyError:
+            raise RuntimeError("Error: no account for app '{}' loaded.".format(app_name))
 
     @abstractmethod
     def run(self):

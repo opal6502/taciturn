@@ -18,9 +18,6 @@
 from taciturn.job import TaciturnJob
 
 from taciturn.applications.twitter import TwitterHandler
-from taciturn.db.base import User, Application, AppAccount
-
-from sqlalchemy import and_
 
 from time import sleep
 
@@ -31,54 +28,50 @@ class TwitterFollowJob(TaciturnJob):
     def init_job(self, options, config=None):
         super().init_job(options, config)
 
-        self.appname = 'twitter'
+        self.appnames = ['twitter']
+        self.accounts = dict()
         self.username = options.user[0]
 
-        account = self.session.query(AppAccount).filter(and_(AppAccount.application_id == Application.id,
-                                                             AppAccount.user_id == User.id,
-                                                             User.name == self.username,
-                                                             Application.name == self.appname
-                                                             )).one_or_none()
-        if account is None:
-            raise
+        # pre-load accounts for all apps this job uses:
+        self.load_accounts()
 
         self.target_account = options.target[0]
-        self.daily_max_follows = options.max or self.config['app:twitter']['daily_max_follows']
-        self.round_max_follows = options.quota or self.config['app:twitter']['round_max_follows']
-        self.rounds_per_day = self.daily_max_follows / self.round_max_follows
         self.stop_no_quota = options.stop
 
+        self.options = options
 
     def run(self):
         # this script will handle following a total of X followers in Y rounds per day
 
         # get user from database:
-        user = self.session.query(User)\
-            .filter(and_(User.name == self.username,
-                         Application.name == self.appname,
-                         Application.id == User.application_id)).one()
-
-        twitter_handler = TwitterHandler(self.session, user.name, user.password)
+        twitter_account = self.get_account('twitter')
+        twitter_handler = TwitterHandler(self.session, twitter_account)
 
         # figure out what to do for the next 24 hours:
 
-        rounds_per_day = self.daily_max_follows // self.round_max_follows
+        daily_max_follows = self.options.max or self.config['app:twitter']['daily_max_follows']
+        round_max_follows = self.options.quota or self.config['app:twitter']['round_max_follows']
+
+        rounds_per_day = daily_max_follows // round_max_follows
         print("rounds_per_day:", rounds_per_day)
-        round_timeout = 24*60*60 / rounds_per_day
+        round_timeout = (24*60*60) / rounds_per_day
 
         twitter_handler.login()
 
         for round_n in range(1, rounds_per_day+1):
-            print("twitter_follow: beginning round {} for {} at twitter ...".format(round_n, user.name))
+            print("twitter_follow: beginning round {} for {} at twitter ...".format(round_n, self.username))
 
-            followed_count = twitter_handler.start_following(self.target_account, quota=self.round_max_follows)
+            followed_count = twitter_handler.start_following(self.target_account, quota=round_max_follows)
 
-            if followed_count < self.round_max_follows:
+            if followed_count < round_max_follows:
                 print("twitter_follow: couldn't fulfill quota:"
-                      " expected {} follows, actual {}.".format(self.round_max_follows, followed_count))
+                      " expected {} follows, actual {}.".format(round_max_follows, followed_count))
                 if self.stop_no_quota:
                     print("Quota unfulfilled, stopping following.")
                     break
+            elif followed_count == round_max_follows and round_n < rounds_per_day:
+                print("Followed {} users, round complete."
+                      "  Sleeping for {} hours".format(followed_count, round_timeout / (60*60)))
 
             sleep(round_timeout)
 

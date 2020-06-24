@@ -24,7 +24,17 @@ from taciturn.config import load_config, supported_applications
 
 from taciturn.db.base import (
     ORMBase,
-    Application
+    Application,
+    User,
+    AppAccount,
+    Blacklist,
+    Whitelist
+)
+
+from taciturn.db.followers import (
+    Follower,
+    Following,
+    Unfollowed
 )
 
 from datetime import datetime
