@@ -1,5 +1,5 @@
 
-from taciturn.handlers.instagram import InstagramHandler
+from taciturn.applications.instagram import InstagramHandler
 
 username = 'rbguy9000'
 password = 'f0rtify%47A'

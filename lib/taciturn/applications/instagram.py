@@ -16,7 +16,7 @@
 
 
 from selenium.webdriver.common.by import By
-from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import TimeoutException, NoSuchElementException, StaleElementReferenceException
 from selenium.webdriver.support.ui import WebDriverWait
 
 from taciturn.applications.base import (
@@ -26,6 +26,9 @@ from taciturn.applications.base import (
     AppRetryLimitException)
 
 from time import sleep
+
+
+BUTTON_TEXT_FOLLOWING = ('Following', 'Requested')
 
 
 class InstagramHandler(FollowerApplicationHandler):
@@ -39,8 +42,13 @@ class InstagramHandler(FollowerApplicationHandler):
 
     follow_random_wait = (10, 60)
 
-    def __init__(self, app_username, app_password, taciturn_group='default'):
-        super().__init__(app_username, app_password, taciturn_group, InstagramHandlerWebElements)
+    def __init__(self, db_session, app_account, elements=None):
+        super().__init__(db_session, app_account, InstagramHandlerWebElements)
+
+        self.follow_back_hiatus = self.config['app:instagram']['follow_back_hiatus']
+        self.unfollow_hiatus = self.config['app:instagram']['unfollow_hiatus']
+        self.action_timeout = self.config['app:instagram']['action_timeout']
+
         self.goto_homepage()
 
     def goto_homepage(self):
@@ -88,7 +96,56 @@ class InstagramHandler(FollowerApplicationHandler):
 
         return True
 
-    def start_following(self, target_username, quota=None):
+    def start_following(self, target_account, quota=None, unfollow_hiatus=None):
+        self.driver.get("{}/{}".format(self.application_url, target_account))
+        sleep(5)
+
+        self.e.followers_link().click()
+
+        followers_list_offset = self.e.followers_lightbox_interior_top()
+        unfollow_hiatus = unfollow_hiatus or self.follow_back_hiatus
+        followed_count = 0
+
+        follower_entry = self.e.first_follower_entry()
+
+        while quota is None or followed_count < quota:
+            try:
+                self.scrollto_element(follower_entry, offset=followers_list_offset)
+                entry_username = self.e.follower_username(follower_entry).text
+                entry_button_text = self.e.follower_button(follower_entry).text
+                entry_image_src = self.e.follower_image(follower_entry).get_attribute('src')
+
+                print("start_following: entry_username =", entry_username)
+                print("start_following: entry_button_text =", entry_button_text)
+
+                # already following, skip:1
+                if entry_button_text in BUTTON_TEXT_FOLLOWING:
+                    print("start_following: already following, skip ...")
+                    # XXX cross reference with database here?
+                    follower_entry = self.e.next_follower_entry(follower_entry)
+                    continue
+
+                entry_is_default_image = self.is_default_image(entry_image_src)
+                if entry_is_default_image:
+                    print("start_following: image is default, skip ...")
+                    follower_entry = self.e.next_follower_entry(follower_entry)
+                    continue
+
+                print("start_following: entry_button_text default? ", entry_is_default_image)
+
+            except (NoSuchElementException, StaleElementReferenceException):
+                with open("instagram_entry.html", 'w') as entryfile:
+                    print("Writing element innerHTML to entry.html!")
+                    entryfile.write(follower_entry.get_attribute('innerHTML'))
+                raise
+
+            # sleep(5)
+            follower_entry = self.e.next_follower_entry(follower_entry)
+
+        return followed_count
+
+
+    def old_start_following(self, target_username, quota=None):
         # start a follow task, get the next queued account to follow from,
         # load the page, and open the followers list, and go down the line,
         # following and making a db record for each follow ...
@@ -204,9 +261,37 @@ class InstagramHandler(FollowerApplicationHandler):
         # duration ... and then unfollow them!
         pass
 
+    def update_following(self):
+        pass
+
 
 class InstagramHandlerWebElements(ApplicationWebElements):
-    follower_xpath_prefix = '//div[@role="dialog"]/div/div[2]/ul/div'
+    # follower_xpath_prefix = '//div[@role="dialog"]/div/div[2]/ul/div'
+    _followers_lighbox_prefix = '//div[@role="presentation"]/div[@role="dialog"]'
+
+    def followers_lightbox(self):
+        return self.driver.find_element(By.XPATH, self._followers_lighbox_prefix)
+
+    def followers_lightbox_interior_top(self):
+        lightbox = self.followers_lightbox()
+        e = lightbox.find_element(By.XPATH, './div/div[2]')
+        print("followers_lightbox_top: got element.")
+
+        offset_script = """
+        var rect = arguments[0].getBoundingClientRect();
+        return rect.top;
+        """
+        interior_top = self.driver.execute_script(offset_script, e)
+
+        print("followers_lightbox_top: got interior_top =", interior_top)
+        return int(interior_top)
+
+    def first_follower_entry(self):
+        lightbox = self.followers_lightbox()
+        return lightbox.find_element(By.XPATH, './div/div[2]/ul/div/li[1]')
+
+    def next_follower_entry(self, follower_entry):
+        return follower_entry.find_element(By.XPATH, './following-sibling::li[1]')
 
     def _follower_entry_xpath_prefix(self, n=1):
         return self.follower_xpath_prefix + '/li[{}]'.format(n)
@@ -221,26 +306,34 @@ class InstagramHandlerWebElements(ApplicationWebElements):
             By.XPATH,
             self._follower_entry_xpath_prefix(n))
 
-    def follower_username(self, n=1):
-        return self.driver.find_element(
-            By.XPATH,
-            self._follower_entry_xpath_prefix(n) + '/div/div[1]/div[2]/div[1]/a')
+    @staticmethod
+    def follower_username(follower_entry):
+        # /html/body/div[5]/div/div/div[2]/ul/div/li[7]/div/div[1]/div[2]/div[1]/a
+        # /html/body/div[4]/div/div/div[2]/ul/div/li[1]/div/div[2]/div[1]/div/div/a
+        return follower_entry.find_element(
+            By.XPATH, './div/div[1]/div[2]/div[1]/a | '
+                      './div/div[2]/div[1]/div/div/a')
 
-    def follower_image(self, n=1):
-        return self.driver.find_element(
-            By.XPATH,
-            self._follower_entry_xpath_prefix(n) + '/div/div[1]/div[1]/*[self::a or self::span]/img')
+    @staticmethod
+    def follower_image(follower_entry):
+        # /html/body/div[5]/div/div/div[2]/ul/div/li[7]/div/div[1]/div[1]/a/img
+        # not sure why the <a> is a <span> sometimes, private accounts, maybe?
+        return follower_entry.find_element(
+            By.XPATH, './div/div[1]/div[1]/*[self::a or self::span]/img')
 
-    def follower_button(self, n=1):
-        return self.driver.find_element(
-            By.XPATH, self._follower_entry_xpath_prefix(n) + '/div/div[2]/button')
+    @staticmethod
+    def follower_button(follower_entry):
+        # /html/body/div[5]/div/div/div[2]/ul/div/li[7]/div/div[2]/button
+        # /html/body/div[4]/div/div/div[2]/ul/div/li[7]/div/div[3]/button
+        return follower_entry.find_element(By.XPATH, './div/div[2]/button |'
+                                                     './div/div[3]/button')
 
-    def follower_is_verified(self, n=1):
+    @staticmethod
+    def follower_is_verified(follower_entry):
         try:
-            self.driver.find_element(
-                By.XPATH,
-                self._follower_entry_xpath_prefix(n) + '/div/div[2]/div[1]/div/div/span[@title="Verified"]')
-        except:
+            follower_entry.find_element(By.XPATH,
+                                        './div/div[2]/div[1]/div/div/span[@title="Verified"]')
+        except NoSuchElementException:
             return False
         return True
 
@@ -259,4 +352,4 @@ class InstagramHandlerWebElements(ApplicationWebElements):
     def image_upload_button(self):
         # user-agent mobile only!
         # //*[@id="react-root"]/section/nav[2]/div/div/div[2]/div/div/div[3]
-        oass
+        pass

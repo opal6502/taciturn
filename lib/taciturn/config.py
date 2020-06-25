@@ -45,7 +45,7 @@ default_config = {
         'daily_max_unfollows': 400,
         'round_max_unfollows': 50,
         # 1-5 minutes:
-        'action_timeout': (1000, 1000*5),
+        'action_timeout': (1000*60, 1000*60*5),
 
         'follow_back_hiatus': datetime.timedelta(days=7),
         'unfollow_hiatus': datetime.timedelta(days=30*6),

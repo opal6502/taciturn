@@ -17,9 +17,15 @@
 
 # SQLAlchemy:
 from sqlalchemy.orm import Session
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, and_
 
-from taciturn.db.base import Application, User
+from taciturn.db.base import (
+    Application,
+    User,
+    Whitelist,
+    Blacklist
+)
+
 from taciturn.config import load_config
 
 # Selenium automation:
@@ -65,8 +71,6 @@ class BaseApplicationHandler(ABC):
 
     # database
     db_default_uri = "sqlite:///db/taciturn.sqlite"
-    db_engine = None
-    db_session = None
 
     def __init__(self, db_session, app_account, elements=None):
         # database rows, as SQLAlchemy objects:
@@ -80,15 +84,42 @@ class BaseApplicationHandler(ABC):
 
         self.config = load_config()
 
+        # init white/blacklists:
+        self._load_access_lists()
+
         # init Selenium:
         self.driver = Chrome()
         self.driver.implicitly_wait(self.implicit_wait_default)
 
-        if elements:
+        if elements is not None:
             self.e = elements(self.driver, self.implicit_wait_default)
         else:
             print("Warning: it's a good idea to use the ApplicationWebElements pattern for your webelement selectors!")
 
+    def _load_access_lists(self):
+        # load whitelist:
+        wl = self.session.query(Whitelist.name)\
+                        .filter(and_(Whitelist.user_id == self.app_account.id,
+                                     Whitelist.application_id == Application.id,
+                                     Application.name == self.application_name,
+                                     Application.id == Whitelist.application_id))
+        self.whitelist = {w.lower() for w, in wl}
+        print("whitelist =", self.whitelist)
+
+        # load blacklist:
+        bl = self.session.query(Blacklist.name)\
+                        .filter(and_(Blacklist.user_id == self.app_account.id,
+                                     Blacklist.application_id == Application.id,
+                                     Application.name == self.application_name,
+                                     Application.id == Blacklist.application_id))
+        self.blacklist = {b.lower() for b, in bl}
+        print("blacklist =", self.whitelist)
+
+    def in_whitelist(self, name):
+        return name.lower() in self.whitelist
+
+    def in_blacklist(self, name):
+        return name.lower() in self.blacklist
 
     def quit(self):
         self.driver.quit()

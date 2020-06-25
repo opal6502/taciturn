@@ -34,6 +34,7 @@ class TaciturnJob(ABC):
     __jobname__ = 'taciturn_job'
 
     def init_job(self, options, config=None):
+        self.accounts = dict()
         self.options = options
         self.config = config or load_config()
 

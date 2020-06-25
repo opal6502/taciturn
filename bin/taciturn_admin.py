@@ -44,6 +44,19 @@
 #  -- display user account for app
 #  taciturn_admin.py user user-name app app-name account account-name { add | delete | password }
 #  -- create/delete/edit user account for app
+#  taciturn_admin.py user user-name app app-name whitelist
+#  -- list user-name's whitelist
+#  taciturn_admin.py user user-name app app-name whitelist account-name
+#  -- list user-name's and app-name's whitelist account account-name
+#  taciturn_admin.py user user-name app app-name whitelist account-name { add | delete }
+#  -- add or delete whitelist entry
+#  taciturn_admin.py user user-name app app-name blacklist
+#  -- list user-name's blacklist
+#  taciturn_admin.py user user-name app app-name blacklist account-name
+#  -- list user-name's and app-name's blacklist account account-name
+#  taciturn_admin.py user user-name app app-name blacklist account-name { add | delete }
+#  -- add or delete blacklist entry
+
 
 # eventually it might be nice to collect stats!
 
@@ -53,7 +66,9 @@ from sqlalchemy import and_
 from taciturn.db.base import (
     Application,
     User,
-    AppAccount
+    AppAccount,
+    Whitelist,
+    Blacklist
 )
 
 from taciturn.config import load_config
@@ -202,7 +217,7 @@ def list_user_accounts(user_name, app_name=None, account_name=None):
                                                                AppAccount.user_id == User.id,
                                                                AppAccount.application_id == Application.id))
 
-    print('-'*72)
+    # print('-'*72)
 
     if app_name is not None and account_name is not None:
         if accounts.count() == 0:
@@ -283,6 +298,7 @@ def delete_user_account(user_name, app_name, account_name):
     print("Deleted account '{}' for '{}' on app '{}'".format(account_name, user_name, app_name))
     return True
 
+
 def password_user_account(user_name, app_name, account_name):
     account = session.query(AppAccount).filter(and_(AppAccount.name == account_name,
                                                     Application.name == app_name,
@@ -298,6 +314,202 @@ def password_user_account(user_name, app_name, account_name):
     session.commit()
 
     print("New password for account '{}' for user '{}' on app '{}'".format(account_name, user_name, app_name))
+    return True
+
+
+def list_whitelist(user_name, app_name, entry_name=None):
+    if entry_name is not None:
+        entries = session.query(Whitelist, Application, User)\
+                        .filter(and_(Whitelist.name == entry_name,
+                                     User.name == user_name,
+                                     Application.name == app_name,
+                                     User.id == Whitelist.user_id,
+                                     Application.id == Whitelist.application_id))
+    else:
+        entries = session.query(Whitelist, Application, User)\
+                        .filter(and_(User.name == user_name,
+                                     Application.name == app_name,
+                                     User.id == Whitelist.user_id,
+                                     Application.id == Whitelist.application_id))
+
+    print('-' * 72)
+    if entry_name is not None:
+        print(" Whitelist entry '{}' for '{}' on '{}':".format(entry_name, user_name, app_name))
+    else:
+        print(" Whitelist for '{}' on '{}':".format(user_name, app_name))
+    print('-' * 72)
+
+    if entries.count() == 0:
+        print("*** None ***")
+        return False
+    else:
+        for w, a, u in entries.all():
+            print(w.name, '\t', u.name, '\t', a.name, '\t', w.established)
+        return True
+
+
+def add_to_whitelist(user_name, app_name, entry_name):
+    entry = session.query(Whitelist) \
+        .filter(and_(Whitelist.name == entry_name,
+                     User.name == user_name,
+                     Application.name == app_name,
+                     User.id == Whitelist.user_id,
+                     Application.id == Whitelist.application_id))\
+        .one_or_none()
+    if entry is not None:
+        warn("'{}' is already in whitelist for '{}' on app '{}'".format(entry_name, user_name, app_name))
+        return False
+
+    app = session.query(Application).filter_by(name=app_name).one_or_none()
+    user = session.query(User).filter_by(name=user_name).one_or_none()
+    if app is None and user is None:
+        warn("No such user '{}', no such app '{}'.".format(user_name, app_name))
+        return False
+    if app is None:
+        warn("No such app '{}'".format(app_name))
+        return False
+    if user is None:
+        warn("No such user '{}'".format(user_name))
+        return False
+
+    new_whitelist_entry = Whitelist(name=entry_name,
+                                    established=datetime.now(),
+                                    user_id=user.id,
+                                    application_id=app.id)
+    session.add(new_whitelist_entry)
+    session.commit()
+
+    print("Added '{}' to whitelist for '{}' on app '{}'".format(entry_name, user_name, app_name))
+    return True
+
+
+def delete_from_whitelist(user_name, app_name, entry_name):
+    app = session.query(Application).filter_by(name=app_name).one_or_none()
+    user = session.query(User).filter_by(name=user_name).one_or_none()
+    if app is None and user is None:
+        warn("No such user '{}', no such app '{}'.".format(user_name, app_name))
+        return False
+    if app is None:
+        warn("No such app '{}'".format(app_name))
+        return False
+    if user is None:
+        warn("No such user '{}'".format(user_name))
+        return False
+
+    entry = session.query(Whitelist)\
+        .filter(and_(Whitelist.name == entry_name,
+                     User.name == user_name,
+                     Application.name == app_name,
+                     User.id == Whitelist.user_id,
+                     Application.id == Whitelist.application_id))\
+        .one_or_none()
+
+    if entry is None:
+        warn("'{}' is not in whitelist for '{}' on app '{}'".format(entry_name, user_name, app_name))
+        return False
+
+    session.delete(entry)
+    session.commit()
+
+    print("Deleted '{}' to whitelist for '{}' on app '{}'".format(entry_name, user_name, app_name))
+    return True
+
+
+def list_blacklist(user_name, app_name, entry_name=None):
+    if entry_name is not None:
+        entries = session.query(Blacklist, Application, User)\
+                        .filter(and_(Blacklist.name == entry_name,
+                                     User.name == user_name,
+                                     Application.name == app_name,
+                                     User.id == Blacklist.user_id,
+                                     Application.id == Blacklist.application_id))
+    else:
+        entries = session.query(Blacklist, Application, User)\
+                        .filter(and_(User.name == user_name,
+                                     Application.name == app_name,
+                                     User.id == Blacklist.user_id,
+                                     Application.id == Blacklist.application_id))
+
+    print('-' * 72)
+    if entry_name is not None:
+        print(" Blacklist entry '{}' for '{}' on '{}':".format(entry_name, user_name, app_name))
+    else:
+        print(" Blacklist for '{}' on '{}':".format(user_name, app_name))
+    print('-' * 72)
+
+    if entries.count() == 0:
+        print("*** None ***")
+        return False
+    else:
+        for w, a, u in entries.all():
+            print(w.name, '\t', u.name, '\t', a.name, '\t', w.established)
+        return True
+
+
+def add_to_blacklist(user_name, app_name, entry_name):
+    entry = session.query(Blacklist) \
+        .filter(and_(Blacklist.name == entry_name,
+                     User.name == user_name,
+                     Application.name == app_name,
+                     User.id == Blacklist.user_id,
+                     Application.id == Blacklist.application_id))\
+        .one_or_none()
+    if entry is not None:
+        warn("'{}' is already in whitelist for '{}' on app '{}'".format(entry_name, user_name, app_name))
+        return False
+
+    app = session.query(Application).filter_by(name=app_name).one_or_none()
+    user = session.query(User).filter_by(name=user_name).one_or_none()
+    if app is None and user is None:
+        warn("No such user '{}', no such app '{}'.".format(user_name, app_name))
+        return False
+    if app is None:
+        warn("No such app '{}'".format(app_name))
+        return False
+    if user is None:
+        warn("No such user '{}'".format(user_name))
+        return False
+
+    new_blacklist_entry = Blacklist(name=entry_name,
+                                    established=datetime.now(),
+                                    user_id=user.id,
+                                    application_id=app.id)
+    session.add(new_blacklist_entry)
+    session.commit()
+
+    print("Added '{}' to blacklist for '{}' on app '{}'".format(entry_name, user_name, app_name))
+    return True
+
+
+def delete_from_blacklist(user_name, app_name, entry_name):
+    app = session.query(Application).filter_by(name=app_name).one_or_none()
+    user = session.query(User).filter_by(name=user_name).one_or_none()
+    if app is None and user is None:
+        warn("No such user '{}', no such app '{}'.".format(user_name, app_name))
+        return False
+    if app is None:
+        warn("No such app '{}'".format(app_name))
+        return False
+    if user is None:
+        warn("No such user '{}'".format(user_name))
+        return False
+
+    entry = session.query(Blacklist)\
+        .filter(and_(Blacklist.name == entry_name,
+                     User.name == user_name,
+                     Application.name == app_name,
+                     User.id == Blacklist.user_id,
+                     Application.id == Blacklist.application_id))\
+        .one_or_none()
+
+    if entry is None:
+        warn("'{}' is not in blacklist for '{}' on app '{}'".format(entry_name, user_name, app_name))
+        return False
+
+    session.delete(entry)
+    session.commit()
+
+    print("Deleted '{}' from blacklist for '{}' on app '{}'".format(entry_name, user_name, app_name))
     return True
 
 
@@ -362,6 +574,11 @@ def run_command(args):
         elif len(args) == 5:
             if args[0] == 'user' and args[2] == 'app' and args[4] == 'account':
                 return list_user_accounts(args[1], args[3])
+            #  taciturn_admin.py user user-name app app-name whitelist
+            elif args[0] == 'user' and args[2] == 'app' and args[4] == 'whitelist':
+                return list_whitelist(args[1], args[3])
+            elif args[0] == 'user' and args[2] == 'app' and args[4] == 'blacklist':
+                return list_blacklist(args[1], args[3])
             else:
                 warn("Syntax error.")
                 return False
@@ -369,6 +586,10 @@ def run_command(args):
         elif len(args) == 6:
             if args[0] == 'user' and args[2] == 'app' and args[4] == 'account':
                 return list_user_accounts(args[1], args[3], args[5])
+            elif args[0] == 'user' and args[2] == 'app' and args[4] == 'whitelist':
+                return list_whitelist(args[1], args[3], args[5])
+            elif args[0] == 'user' and args[2] == 'app' and args[4] == 'blacklist':
+                return list_blacklist(args[1], args[3], args[5])
             else:
                 warn("Syntax error.")
                 return False
@@ -380,6 +601,14 @@ def run_command(args):
                 return delete_user_account(args[1], args[3], args[5])
             elif args[0] == 'user' and args[2] == 'app' and args[4] == 'account' and args[6] == 'password':
                 return password_user_account(args[1], args[3], args[5])
+            if args[0] == 'user' and args[2] == 'app' and args[4] == 'whitelist' and args[6] == 'add':
+                return add_to_whitelist(args[1], args[3], args[5])
+            elif args[0] == 'user' and args[2] == 'app' and args[4] == 'whitelist' and args[6] == 'delete':
+                return delete_from_whitelist(args[1], args[3], args[5])
+            if args[0] == 'user' and args[2] == 'app' and args[4] == 'blacklist' and args[6] == 'add':
+                return add_to_blacklist(args[1], args[3], args[5])
+            elif args[0] == 'user' and args[2] == 'app' and args[4] == 'blacklist' and args[6] == 'delete':
+                return delete_from_blacklist(args[1], args[3], args[5])
             else:
                 warn("Syntax error.")
                 return False

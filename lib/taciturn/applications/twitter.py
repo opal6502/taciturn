@@ -46,6 +46,7 @@ from taciturn.db.base import (
 )
 
 BUTTON_TEXT_FOLLOWING = ('Following', 'Pending', 'Cancel', 'Unfollow')
+BUTTON_TEXT_UNFOLLOWED = ('Follow')
 
 
 class TwitterHandler(FollowerApplicationHandler):
@@ -110,7 +111,7 @@ class TwitterHandler(FollowerApplicationHandler):
         tab_overlap_y = self.e.followers_tab_overlap()
 
         unfollow_hiatus = unfollow_hiatus or self.follow_back_hiatus
-        max_scan_count = 10
+        # max_scan_count = 10
         followed_count = 0
 
         follower_entry = self.e.first_follower_entry()
@@ -121,20 +122,32 @@ class TwitterHandler(FollowerApplicationHandler):
             entryfile.write(follower_entry.get_attribute('innerHTML'))
 
         while quota is None or followed_count < quota:
-            
+
             if self.e.is_followers_end(follower_entry):
                 print("List end encountered, stopping.")
                 return followed_count
 
-            try:
-                entry_username = self.e.follower_username(follower_entry).text
-            except NoSuchElementException:
-                with open("entry.html", 'w') as entryfile:
-                    print("Writing element innerHTML to entry.html!")
-                    entryfile.write(follower_entry.get_attribute('innerHTML'))
-                raise
+            entry_username = self.e.follower_username(follower_entry).text
+
+            # check to see if we've unfollowed this user within the unfollow_hiatus time:
+            unfollowed = self.session.query(Unfollowed).filter(
+                                            and_(Unfollowed.name == entry_username,
+                                                 Unfollowed.user_id == self.app_account.user_id,
+                                                 Unfollowed.application_id == Application.id,
+                                                 Application.name == self.application_name))\
+                                            .one_or_none()
+            if unfollowed is not None and datetime.now() < unfollowed.established + self.unfollow_hiatus:
+                time_remaining = (unfollowed.established + self.unfollow_hiatus) - datetime.now()
+                print("Followed/unfollowed too recently, can follow again after", time_remaining)
+                follower_entry = self.e.next_follower_entry(follower_entry)
+                continue
 
             self.scrollto_element(follower_entry, offset=tab_overlap_y)
+
+            if self.in_blacklist(entry_username):
+                print("{} is in blacklist, skip ...")
+                follower_entry = self.e.next_follower_entry(follower_entry)
+                continue
 
             # extract entry fields, continue'ing asap to avoid unnecessary scanning:
             entry_button = self.e.follower_button(follower_entry)
@@ -211,6 +224,10 @@ class TwitterHandler(FollowerApplicationHandler):
                                           application_id=self.app_account.application_id,
                                           user_id=self.app_account.user_id,
                                           established=datetime.now())
+
+                # if there was an unfollowed entry, remove it now:
+                if unfollowed is not None:
+                    self.session.delete(unfollowed)
 
                 self.session.add(new_following)
                 self.session.commit()
@@ -319,8 +336,98 @@ class TwitterHandler(FollowerApplicationHandler):
 
         return entries_added
 
-    def start_unfollow(self, quota=None):
-        pass
+    def start_unfollow(self, quota=None, follow_back_hiatus=None):
+        # print(" GET {}/{}/following".format(self.application_url, self.app_username))
+        self.driver.get("{}/{}/following".format(self.application_url, self.app_username))
+
+        following_entry = self.e.first_following_entry()
+        print("following_entry =", following_entry)
+        unfollow_count = 0
+        follow_back_hiatus = follow_back_hiatus or self.follow_back_hiatus
+
+        while quota is None or quota > unfollow_count:
+            # check to see if this looks like the end:
+            if self.e.is_followers_end(following_entry):
+                print("List end encountered, stopping.")
+                return unfollow_count
+
+            # check to see if entry is in the database:
+            self.scrollto_element(following_entry)
+
+            following_username = self.e.follower_username(following_entry).text
+            print("Scanning {} ...".format(following_username))
+
+            # if in whitelist, skip ...
+            if self.in_whitelist(following_username):
+                print("'{}' in whitelist, skipping ...".format(following_username))
+                following_entry = self.e.next_follower_entry(following_entry)
+                continue
+
+            # if follows us, skip ...
+            if self.e.follower_follows_me(following_entry):
+                print("'{}' follows us, skipping ...".format(following_username))
+                following_entry = self.e.next_follower_entry(following_entry)
+                continue
+
+            # get following entry from db ...
+            following_db = self.session.query(Following) \
+                .filter(and_(Following.user_id == self.app_account.user_id,
+                             Following.application_id == self.app_account.application_id,
+                             Following.name == following_username
+                             )).one_or_none()
+
+            # if entry not in db, add with timestamp and skip ...
+            if following_db is None:
+                print("No entry for '{}', creating.".format(following_username))
+                new_following = Following(name=following_username,
+                                          established=datetime.now(),
+                                          application_id=self.app_account.application_id,
+                                          user_id=self.app_account.user_id)
+                self.session.add(new_following)
+                self.session.commit()
+                print("Skipping new follower ...")
+                following_entry = self.e.next_follower_entry(following_entry)
+                continue
+            # follow in db, check and delete, if now > then + hiatus time ...
+            else:
+                if datetime.now() > following_db.established + follow_back_hiatus:
+                    print("Follow expired, unfollowing ...")
+                    list_following_button = self.e.follower_button(following_entry)
+                    list_following_button_text = list_following_button.text
+                    if list_following_button_text != 'Unfollow':
+                        raise AppUnexpectedStateException(
+                            "Unfollow button for '{}' says '{}'?".format(following_username,
+                                                                         list_following_button_text))
+                    list_following_button_text.click()
+                    lb_following_button = self.e.unfollow_lightbox_button()
+                    lb_following_button.click()
+
+                    # we need to wait and make sure button goes back to unfollowed state ...
+                    WebDriverWait(following_entry, 60).until(
+                        lambda e: self.e.follower_button(e).text in BUTTON_TEXT_UNFOLLOWED)
+
+                    # create a new unfollow entry:
+                    new_unfollowed = Unfollowed(name=following_db.name,
+                                                established=datetime.now(),
+                                                user_id=following_db.user_id,
+                                                application_id=following_db.application_id)
+
+                    self.session.add(new_unfollowed)
+                    self.session.delete(following_db)
+
+                    self.session.commit()
+                    unfollow_count += 1
+
+                    self.sleepmsrange(self.action_timeout)
+                else:
+                    time_remaining = (following_db.established + follow_back_hiatus) - datetime.now()
+                    print("Follow hiatus not reached!  {} left!".format(time_remaining))
+            try:
+                following_entry = self.e.next_follower_entry(following_entry)
+            except NoSuchElementException:
+                break
+
+        return unfollow_count
 
 
 class TwitterHandlerWebElements(ApplicationWebElements):
@@ -341,9 +448,12 @@ class TwitterHandlerWebElements(ApplicationWebElements):
     def first_follower_entry(self):
         return self.driver.find_element(By.XPATH, self._follower_first_follower_entry)
 
-    @staticmethod
-    def next_follower_entry(follower_entry):
-        return follower_entry.find_element(By.XPATH, './following-sibling::div[1]')
+    def next_follower_entry(self, follower_entry):
+        selector = './following-sibling::div[1]'
+        # may as well allow a generous wait, 5 minutes, make sure the element is probably fully populated, too:
+        WebDriverWait(follower_entry, 60*5)\
+            .until(lambda e: e.find_element(By.XPATH, selector) and self.follower_username(e))
+        return follower_entry.find_element(By.XPATH, selector)
 
     def follower_entries(self):
         return self.driver.find_elements(By.XPATH, self._follower_entries_xpath_prefix)
@@ -386,11 +496,25 @@ class TwitterHandlerWebElements(ApplicationWebElements):
                     './div/div/div/div[2]/div[1]/div[1]/a/div/div[1]/div[2]/'
                     '*[local-name() = "svg" and @aria-label="Verified account"]'
                 )))
+            return True
         except NoSuchElementException:
             return False
         finally:
             self.driver.implicitly_wait(self.implicit_default_wait)
-        return True
+
+    def follower_follows_me(self, follower_entry):
+        # //*[@id="react-root"]/div/div/div[2]/main/div/div/div/div[1]/div/div[2]/section/div/div/div/div[12]/div/div/div/div[2]/div[1]/div[1]/a/div/div[2]/div[2]/span
+        try:
+            self.driver.implicitly_wait(0)
+            follower_entry.find_element(
+                By.XPATH,
+                './div/div/div/div[2]/div[1]/div[1]/a/div/div[2]/div[2]/span[text() = "Follows you"]'
+            )
+            return True
+        except NoSuchElementException:
+            return False
+        finally:
+            self.driver.implicitly_wait(self.implicit_default_wait)
 
     def login_username_input(self):
         # //*[@id="react-root"]/div/div/div[2]/main/div/div/div/div[2]/div/div[2]/div/div/div/div[1]/section/form/div/div[1]/div/label/div/div[2]/div/input
@@ -467,7 +591,7 @@ class TwitterHandlerWebElements(ApplicationWebElements):
                 '//*[@id="react-root"]/div/div/div[1]/div[2]/div/div/div[1]/span'
             ).text
         except NoSuchElementException:
-            print("bottom_notify_popover_text: NoSuchElementException")
+            # print("bottom_notify_popover_text: NoSuchElementException")
             return None
         finally:
             self.driver.implicitly_wait(self.implicit_default_wait)
@@ -536,7 +660,7 @@ class TwitterHandlerWebElements(ApplicationWebElements):
                 '//div[@aria-label="Loading Followers" and @role="progressbar"]/div/*[local-name() = "svg"]'
             ).text
         except NoSuchElementException:
-            print("bottom_notify_popover_text: NoSuchElementException")
+            # print("bottom_notify_popover_text: NoSuchElementException")
             return None
         finally:
             self.driver.implicitly_wait(self.implicit_default_wait)
@@ -550,12 +674,25 @@ class TwitterHandlerWebElements(ApplicationWebElements):
             ).text
             return True
         except NoSuchElementException:
-            print("bottom_notify_popover_text: NoSuchElementException")
+            # print("bottom_notify_popover_text: NoSuchElementException")
             return False
         finally:
             self.driver.implicitly_wait(self.implicit_default_wait)
         return False
 
+    # def verify_unfollow_lightbox(self):
+    #     # //*[@id="react-root"]/div/div/div[1]/div[2]/div/div/div/div[2]/div[2]/div[1]/span
+    #     e = self.driver.find_element(
+    #             By.XPATH,
+    #             '//*[@id="react-root"]/div/div/div[1]/div[2]/div/div/div/div[2]'
+    #             '/div[2]/div[1]/span[starts-with(text(), "Unfollow")]')
+    #     return
+
+    def unfollow_lightbox_button(self):
+        return self.driver.find_element(
+            By.XPATH,
+            '//*[@id="react-root"]/div/div/div[1]/div[2]/div/div'
+            '/div/div[2]/div[2]/div[3]/div[2]/div/span/span[text() = "Unfollow"]')
 
 # twitter specific exceptions:
 
