@@ -25,7 +25,6 @@ import pprint
 
 from sqlalchemy import create_engine
 
-
 if 'TACITURN_ROOT' not in os.environ:
     raise RuntimeError("Environment variable TACITURN_ROOT must be defined.")
 
@@ -40,6 +39,9 @@ default_config = {
     'default_site_config1': 'foo_default',
 
     'orm_connect_args': {'timeout': 60},
+
+    # selenium webdriver type:  'htmlunit', 'htmlunitjs', 'chrome', 'chrome_headless', 'firefox'
+    'selenium_webdriver': 'chrome_headless',
 
     'app:*': {
         'daily_max_follows': 400,

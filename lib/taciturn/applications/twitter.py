@@ -62,12 +62,15 @@ class TwitterHandler(FollowerApplicationHandler):
 
     def __init__(self, db_session, app_account, elements=None):
         super().__init__(db_session, app_account, TwitterHandlerWebElements)
-        self.goto_homepage()
 
         self.follow_back_hiatus = self.config['app:twitter']['follow_back_hiatus']
         self.unfollow_hiatus = self.config['app:twitter']['unfollow_hiatus']
         self.action_timeout = self.config['app:twitter']['action_timeout']
         self.mutual_expire_hiatus = self.config['app:twitter']['mutual_expire_hiatus']
+
+        self.init_webdriver()
+
+        self.goto_homepage()
 
     def goto_homepage(self):
         self.driver.get(self.application_url + '/home')

@@ -29,7 +29,10 @@ from taciturn.db.base import (
 from taciturn.config import load_config
 
 # Selenium automation:
-from selenium.webdriver import Chrome
+from selenium.webdriver import Chrome, Firefox, Remote
+from selenium import webdriver
+
+from selenium.webdriver.chrome.options import Options
 
 # base class abstraction:
 from abc import ABC
@@ -81,20 +84,14 @@ class BaseApplicationHandler(ABC):
         self.app_username = app_account.name
         self.app_password = app_account.password
         self.app_account = app_account
+        self._elements_cls = elements
 
         self.config = load_config()
 
         # init white/blacklists:
         self._load_access_lists()
 
-        # init Selenium:
-        self.driver = Chrome()
-        self.driver.implicitly_wait(self.implicit_wait_default)
 
-        if elements is not None:
-            self.e = elements(self.driver, self.implicit_wait_default)
-        else:
-            print("Warning: it's a good idea to use the ApplicationWebElements pattern for your webelement selectors!")
 
     def _load_access_lists(self):
         # load whitelist:
@@ -116,6 +113,38 @@ class BaseApplicationHandler(ABC):
                                      Application.id == Blacklist.application_id))
         self.blacklist = {b.lower() for b, in bl}
         print("blacklist =", self.blacklist)
+
+    def init_webdriver(self, user_agent=None):
+        # init Selenium:
+        webdriver_type = self.config.get('selenium_webdriver')
+        if webdriver_type is None or webdriver_type == 'chrome':
+            if user_agent:
+                opts = Options()
+                opts.add_argument("user-agent={}".format(user_agent))
+                self.driver = Chrome(options=opts)
+            else:
+                self.driver = Chrome()
+        elif webdriver_type == 'chrome_headless':
+            opts = Options()
+            if user_agent:
+                opts.add_argument("user-agent={}".format(user_agent))
+            opts.add_argument("--headless")
+            self.driver = Chrome(options=opts)
+        elif webdriver_type == 'firefox':
+            self.driver = Firefox()
+        elif webdriver_type == 'htmlunit':
+            self.driver = Remote(desired_capabilities=webdriver.DesiredCapabilities.HTMLUNIT)
+        elif webdriver_type == 'htmlunitwithjs':
+            self.driver = Remote(desired_capabilities=webdriver.DesiredCapabilities.HTMLUNITWITHJS)
+        else:
+            raise TypeError("Webdriver '{}' not supported, check config!".format(webdriver_type))
+
+        self.driver.implicitly_wait(self.implicit_wait_default)
+
+        if self._elements_cls is not None:
+            self.e = self._elements_cls(self.driver, self.implicit_wait_default)
+        else:
+            print("Warning: it's a good idea to use the ApplicationWebElements pattern for your webelement selectors!")
 
     def in_whitelist(self, name):
         return name.lower() in self.whitelist

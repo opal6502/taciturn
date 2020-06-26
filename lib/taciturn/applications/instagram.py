@@ -52,6 +52,10 @@ class InstagramHandler(FollowerApplicationHandler):
     application_url = "https://instagram.com"
     application_login_url = application_url
 
+    # sent an iPhone user agent!
+    user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 6_0 like Mac OS X) AppleWebKit/536.26 " \
+               "(KHTML, like Gecko) Version/6.0 Mobile/10A5376e Safari/8536.25"
+
     application_asset_dirname = 'instagram'
     default_profile_image = 'default-profile-pic.jpg'
 
@@ -65,6 +69,8 @@ class InstagramHandler(FollowerApplicationHandler):
         self.action_timeout = self.config['app:instagram']['action_timeout']
         self.mutual_expire_hiatus = self.config['app:instagram']['mutual_expire_hiatus']
 
+        self.init_webdriver(user_agent=self.user_agent)
+
         self.goto_homepage()
 
     def goto_homepage(self):
@@ -74,6 +80,11 @@ class InstagramHandler(FollowerApplicationHandler):
         self.driver.get("{}/{}/".format(self.application_url, self.app_username))
 
     def login(self):
+        # press login button:
+        first_login_button = self.driver.find_element(
+                By.XPATH, '//*[@id="react-root"]/section/main/article/div/div/div/div[2]/button')
+        first_login_button.click()
+
         # enter username and password:
 
         login_form = self.driver.find_element(By.XPATH, '//form')
@@ -88,17 +99,33 @@ class InstagramHandler(FollowerApplicationHandler):
 
         # sometimes prompted with extra security, check if bypass necessary:
 
-        not_now_link = self.driver.find_element(By.XPATH, "//button[contains(.,'Not Now')]")
-        if not_now_link:
-            not_now_link.click()
+        try:
+            not_now_link = self.driver.find_element(By.XPATH, "//button[contains(.,'Not Now')]")
+            if not_now_link:
+                not_now_link.click()
+        except NoSuchElementException:
+            print("No security dialog, skipping.")
 
         # sometimes prompted with notifications on/off choice:
 
-        notif_dialog = self.driver.find_element(By.XPATH, "//div[@role='dialog']")
-        if notif_dialog:
-            notif_text = notif_dialog.find_element(By.XPATH, "//h2[contains(.,'Turn on Notifications')]")
-            notif_button = notif_dialog.find_element(By.XPATH, "//button[contains(.,'Not Now')]")
-            notif_button.click()
+        try:
+            notif_dialog = self.driver.find_element(By.XPATH, "//div[@role='dialog']")
+            if notif_dialog:
+                notif_text = notif_dialog.find_element(By.XPATH, "//h2[contains(.,'Turn on Notifications')]")
+                notif_button = notif_dialog.find_element(By.XPATH, "//button[contains(.,'Not Now')]")
+                notif_button.click()
+        except NoSuchElementException:
+            print("No notification dialog, skipping.")
+
+        # sometimes prompted with "add instagram to home screen?" choice:
+
+        try:
+            hs_dialog = self.driver.find_element(By.XPATH, '/html/body/div[4]/div/div/div/div[2]/h2').text
+            if hs_dialog == "Add Instagram to your Home screen?":
+                hs_button = self.driver.find_element(By.XPATH, '//button[text() = "Cancel"]')
+                hs_button.click()
+        except NoSuchElementException:
+            print("No home screen dialog, skipping.")
 
         # verify that the main section exists, and contains a link with our username:
 
