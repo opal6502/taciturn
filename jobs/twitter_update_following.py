@@ -15,6 +15,12 @@
 # along with Tactiurn.  If not, see <https://www.gnu.org/licenses/>.
 
 
+from selenium.common.exceptions import (
+    NoSuchElementException,
+    TimeoutException,
+    StaleElementReferenceException
+)
+
 from taciturn.job import TaciturnJob
 
 from taciturn.applications.twitter import TwitterHandler
@@ -22,8 +28,8 @@ from taciturn.applications.twitter import TwitterHandler
 from time import sleep
 
 
-class TwitterFollowJob(TaciturnJob):
-    __jobname__ = 'twitter_scan_following'
+class TwitterUpdateFollowingJob(TaciturnJob):
+    __jobname__ = 'twitter_update_following'
 
     def init_job(self, options, config=None):
         super().init_job(options, config)
@@ -48,10 +54,25 @@ class TwitterFollowJob(TaciturnJob):
         twitter_handler = TwitterHandler(self.session, twitter_account)
 
         twitter_handler.login()
-        twitter_handler.update_following()
+
+        round_retries = 5
+
+        for retry_n in range(1, round_retries + 1):
+            try:
+                twitter_handler.update_following()
+            except (NoSuchElementException, TimeoutException, StaleElementReferenceException) as e:
+                print("Round failed try {} of {}, selenium exception occurred: {}".format(retry_n, round_retries, e))
+                # if this is the last try and it failed, re-raise the exception!
+                if retry_n >= round_retries:
+                    raise e
+                continue
+            else:
+                break
+        else:
+            print("twitter_update_following: failed after {} tries!".format(retry_n))
 
         print("Job complete.")
         twitter_handler.quit()
 
 
-job = TwitterFollowJob()
+job = TwitterUpdateFollowingJob()

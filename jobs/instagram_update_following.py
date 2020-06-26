@@ -23,18 +23,18 @@ from selenium.common.exceptions import (
 
 from taciturn.job import TaciturnJob
 
-from taciturn.applications.twitter import TwitterHandler
+from taciturn.applications.instagram import InstagramHandler
 
-from time import sleep
+# from time import sleep
 
 
-class TwitterUpdateFollowersJob(TaciturnJob):
-    __jobname__ = 'twitter_update_followers'
+class InstagramUpdateFollowingJob(TaciturnJob):
+    __jobname__ = 'instagram_update_following'
 
     def init_job(self, options, config=None):
         super().init_job(options, config)
 
-        self.appnames = ['twitter']
+        self.appnames = ['instagram']
         self.accounts = dict()
         self.username = options.user[0]
 
@@ -50,16 +50,16 @@ class TwitterUpdateFollowersJob(TaciturnJob):
         # this script will handle following a total of X followers in Y rounds per day
 
         # get user from database:
-        twitter_account = self.get_account('twitter')
-        twitter_handler = TwitterHandler(self.session, twitter_account)
+        instagram_account = self.get_account('instagram')
+        instagram_handler = InstagramHandler(self.session, instagram_account)
 
-        twitter_handler.login()
+        instagram_handler.login()
 
         round_retries = 5
 
         for retry_n in range(1, round_retries + 1):
             try:
-                twitter_handler.update_followers()
+                instagram_handler.update_following()
             except (NoSuchElementException, TimeoutException, StaleElementReferenceException) as e:
                 print("Round failed try {} of {}, selenium exception occurred: {}".format(retry_n, round_retries, e))
                 # if this is the last try and it failed, re-raise the exception!
@@ -69,10 +69,10 @@ class TwitterUpdateFollowersJob(TaciturnJob):
             else:
                 break
         else:
-            print("twitter_scan_followers: failed after {} tries!".format(retry_n))
+            print("instagram_update_following: failed after {} retries!".format(retry_n))
 
         print("Job complete.")
-        twitter_handler.quit()
+        instagram_handler.quit()
 
 
-job = TwitterUpdateFollowersJob()
+job = InstagramUpdateFollowingJob()

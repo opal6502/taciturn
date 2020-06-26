@@ -15,6 +15,12 @@
 # along with Tactiurn.  If not, see <https://www.gnu.org/licenses/>.
 
 
+from selenium.common.exceptions import (
+    NoSuchElementException,
+    TimeoutException,
+    StaleElementReferenceException
+)
+
 from taciturn.job import TaciturnJob
 
 from taciturn.applications.twitter import TwitterHandler
@@ -22,7 +28,7 @@ from taciturn.applications.twitter import TwitterHandler
 from time import sleep
 
 
-class TwitterFollowJob(TaciturnJob):
+class TwitterUnfollowJob(TaciturnJob):
     __jobname__ = 'twitter_unfollow'
 
     def init_job(self, options, config=None):
@@ -51,6 +57,7 @@ class TwitterFollowJob(TaciturnJob):
 
         daily_max_unfollows = self.options.max or self.config['app:twitter']['daily_max_unfollows']
         round_max_unfollows = self.options.quota or self.config['app:twitter']['round_max_unfollows']
+        round_retries = 5
 
         rounds_per_day = daily_max_unfollows // round_max_unfollows
         print("rounds_per_day:", rounds_per_day)
@@ -58,25 +65,47 @@ class TwitterFollowJob(TaciturnJob):
 
         twitter_handler.login()
 
+        unfollowed_total = 0
+        failed_rounds = 0
+
         for round_n in range(1, rounds_per_day+1):
-            print("twitter_follow: beginning round {} for {} at twitter ...".format(round_n, self.username))
+            print("twitter_unfollow: beginning round {} for {} at twitter ...".format(round_n, self.username))
 
-            followed_count = twitter_handler.start_unfollow(quota=round_max_unfollows)
+            unfollowed_count = 0
 
-            if followed_count < round_max_unfollows:
-                print("twitter_follow: couldn't fulfill quota:"
-                      " expected {} follows, actual {}.".format(round_max_unfollows, followed_count))
+            for retry_n in range(1, round_retries+1):
+                try:
+                    unfollowed_count = twitter_handler.start_unfollow(quota=round_max_unfollows)
+                except (NoSuchElementException, TimeoutException, StaleElementReferenceException) as e:
+                    print("Round failed try {} of {}, selenium exception occurred: {}".format(retry_n, round_retries, e))
+                    # if this is the last try and it failed, re-raise the exception!
+                    if retry_n >= round_retries:
+                        raise e
+                    continue
+                else:
+                    break
+            else:
+                print("twitter_unfollow: round failed after {} tries!".format(retry_n))
+                failed_rounds += 1
+
+            if unfollowed_count < round_max_unfollows:
+                print("twitter_unfollow: couldn't fulfill quota:"
+                      " expected {} unfollows, actual {}.".format(round_max_unfollows, unfollowed_count))
                 if self.stop_no_quota:
                     print("Quota unfulfilled, stopping unfollowing.")
                     break
-            elif followed_count == round_max_unfollows and round_n < rounds_per_day:
-                print("Followed {} users, round complete."
-                      "  Sleeping for {} hours".format(followed_count, round_timeout / (60*60)))
+            elif unfollowed_count == round_max_unfollows and round_n < rounds_per_day:
+                print("Unfollowed {} users, round complete."
+                      "  Sleeping for {} hours".format(unfollowed_count, round_timeout / (60*60)))
 
+            unfollowed_total += unfollowed_count
             sleep(round_timeout)
+
+        print("Ran {} rounds, unfollowing {} accounts, {} rounds failed"
+                .format(round_n, unfollowed_total, failed_rounds))
 
         print("Job complete.")
         twitter_handler.quit()
 
 
-job = TwitterFollowJob()
+job = TwitterUnfollowJob()

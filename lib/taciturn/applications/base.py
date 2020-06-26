@@ -60,14 +60,14 @@ class BaseApplicationHandler(ABC):
     application_name = None
 
     # retry limit for sensitive information:
-    default_load_retries = 5
+    default_load_retries = 10
     # timeout wait between retries:
     default_load_retry_timeout = 60*3
 
     local_asset_prefix = '/Users/johnk/PycharmProjects/Taciturn/Taciturn/assets/application'
     application_asset_dirname = 'base_app'
 
-    implicit_wait_default = 10
+    implicit_wait_default = 60
 
     # database
     db_default_uri = "sqlite:///db/taciturn.sqlite"
@@ -98,22 +98,24 @@ class BaseApplicationHandler(ABC):
 
     def _load_access_lists(self):
         # load whitelist:
+        # print("_load_access_lists for user '{}' on app '{}'".format(self.app_account.name, self.application_name))
         wl = self.session.query(Whitelist.name)\
-                        .filter(and_(Whitelist.user_id == self.app_account.id,
+                        .filter(and_(Whitelist.user_id == self.app_account.user_id,
                                      Whitelist.application_id == Application.id,
                                      Application.name == self.application_name,
                                      Application.id == Whitelist.application_id))
+        # print("whitelist = ", wl.all())
         self.whitelist = {w.lower() for w, in wl}
         print("whitelist =", self.whitelist)
 
         # load blacklist:
         bl = self.session.query(Blacklist.name)\
-                        .filter(and_(Blacklist.user_id == self.app_account.id,
+                        .filter(and_(Blacklist.user_id == self.app_account.user_id,
                                      Blacklist.application_id == Application.id,
                                      Application.name == self.application_name,
                                      Application.id == Blacklist.application_id))
         self.blacklist = {b.lower() for b, in bl}
-        print("blacklist =", self.whitelist)
+        print("blacklist =", self.blacklist)
 
     def in_whitelist(self, name):
         return name.lower() in self.whitelist

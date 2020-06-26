@@ -75,7 +75,7 @@ class Whitelist(ORMBase):
     user = relationship('User', backref='whitelist')
 
     established = Column(DateTime, nullable=False)
-    name = Column(String(100), unique=True, nullable=False)
+    name = Column(String(100), nullable=False)
 
 
 class Blacklist(ORMBase):
@@ -89,7 +89,7 @@ class Blacklist(ORMBase):
     user = relationship('User', backref='blacklist')
 
     established = Column(DateTime, nullable=False)
-    name = Column(String(100), unique=True, nullable=False)
+    name = Column(String(100), nullable=False)
 
 
 # Taciturn data related exceptions:

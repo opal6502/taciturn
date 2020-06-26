@@ -34,16 +34,12 @@ taciturn_root = os.environ['TACITURN_ROOT']
 site_config = {
     'default_site_config1': 'foo_site',
 
-    'app:*': {
-        'some_dir': os.path.join(taciturn_root, 'some_dir')
-    },
-    'app:instagram': {
-        'daily_max_follows': 200,
-        'round_max_follows': 50,
-        'daily_max_unfollows': 200,
-        'round_max_unfollows': 50,
-    },
-    'app:twitter': {
+    # 'app:*': {
+    #     'some_dir': os.path.join(taciturn_root, 'some_dir')
+    #     'daily_max_follows': 200,
+    #     'round_max_follows': 50,
+    #     'daily_max_unfollows': 200,
+    #     'round_max_unfollows': 50,
+    # },
 
-    }
 }

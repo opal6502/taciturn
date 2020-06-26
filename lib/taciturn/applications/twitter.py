@@ -46,7 +46,7 @@ from taciturn.db.base import (
 )
 
 BUTTON_TEXT_FOLLOWING = ('Following', 'Pending', 'Cancel', 'Unfollow')
-BUTTON_TEXT_UNFOLLOWED = ('Follow')
+BUTTON_TEXT_NOT_FOLLOWING = ('Follow',)
 
 
 class TwitterHandler(FollowerApplicationHandler):
@@ -67,6 +67,7 @@ class TwitterHandler(FollowerApplicationHandler):
         self.follow_back_hiatus = self.config['app:twitter']['follow_back_hiatus']
         self.unfollow_hiatus = self.config['app:twitter']['unfollow_hiatus']
         self.action_timeout = self.config['app:twitter']['action_timeout']
+        self.mutual_expire_hiatus = self.config['app:twitter']['mutual_expire_hiatus']
 
     def goto_homepage(self):
         self.driver.get(self.application_url + '/home')
@@ -117,15 +118,13 @@ class TwitterHandler(FollowerApplicationHandler):
         follower_entry = self.e.first_follower_entry()
         print("follower_entry =", follower_entry)
 
-        with open("first.html", 'w') as entryfile:
-            print("Writing element innerHTML to entry.html!")
-            entryfile.write(follower_entry.get_attribute('innerHTML'))
-
         while quota is None or followed_count < quota:
 
             if self.e.is_followers_end(follower_entry):
                 print("List end encountered, stopping.")
                 return followed_count
+
+            # extract entry fields, continue'ing asap to avoid unnecessary work ...
 
             entry_username = self.e.follower_username(follower_entry).text
 
@@ -149,7 +148,6 @@ class TwitterHandler(FollowerApplicationHandler):
                 follower_entry = self.e.next_follower_entry(follower_entry)
                 continue
 
-            # extract entry fields, continue'ing asap to avoid unnecessary scanning:
             entry_button = self.e.follower_button(follower_entry)
             # already following, skip:1
             if entry_button.text in BUTTON_TEXT_FOLLOWING:
@@ -181,10 +179,23 @@ class TwitterHandler(FollowerApplicationHandler):
                                  Following.application_id == self.app_account.application_id)) \
                     .one_or_none()
                 # if we find a record, it's contradicting what twitter is telling us, so delete it:
+                # XXX this probably means a locked account has refused our request, and we should
+                # add it to unfollowed for a long timeout ...
                 if already_following is not None:
                     print("Warning: user '{}' already recorded as following?"
-                          "  Deleting stale record.".format(entry_username))
+                          "  Moving to unfollowed.".format(entry_username))
                     self.session.delete(already_following)
+
+                    new_unfollowed = Unfollowed(name=already_following.name,
+                                                established=datetime.now(),
+                                                user_id=already_following.user_id,
+                                                application_id=already_following.application_id)
+                    self.session.add(new_unfollowed)
+                    self.session.delete(already_following)
+                    self.session.commit()
+
+                    follower_entry = self.e.next_follower_entry(follower_entry)
+                    continue
 
                 # check to see if we've recently unfollowed this user:
                 already_unfollowed = self.session.query(Unfollowed) \
@@ -233,9 +244,8 @@ class TwitterHandler(FollowerApplicationHandler):
                 self.session.commit()
                 print("Follow added to database.")
 
-                self.sleepmsrange(self.action_timeout)
-
                 followed_count += 1
+                self.sleepmsrange(self.action_timeout)
 
             elif entry_button_text in BUTTON_TEXT_FOLLOWING:
                 # do nothing!
@@ -336,7 +346,7 @@ class TwitterHandler(FollowerApplicationHandler):
 
         return entries_added
 
-    def start_unfollow(self, quota=None, follow_back_hiatus=None):
+    def start_unfollow(self, quota=None, follow_back_hiatus=None, mutual_expire_hiatus=None):
         # print(" GET {}/{}/following".format(self.application_url, self.app_username))
         self.driver.get("{}/{}/following".format(self.application_url, self.app_username))
 
@@ -344,6 +354,7 @@ class TwitterHandler(FollowerApplicationHandler):
         print("following_entry =", following_entry)
         unfollow_count = 0
         follow_back_hiatus = follow_back_hiatus or self.follow_back_hiatus
+        mutual_expire_hiatus = mutual_expire_hiatus or self.mutual_expire_hiatus
 
         while quota is None or quota > unfollow_count:
             # check to see if this looks like the end:
@@ -363,12 +374,6 @@ class TwitterHandler(FollowerApplicationHandler):
                 following_entry = self.e.next_follower_entry(following_entry)
                 continue
 
-            # if follows us, skip ...
-            if self.e.follower_follows_me(following_entry):
-                print("'{}' follows us, skipping ...".format(following_username))
-                following_entry = self.e.next_follower_entry(following_entry)
-                continue
-
             # get following entry from db ...
             following_db = self.session.query(Following) \
                 .filter(and_(Following.user_id == self.app_account.user_id,
@@ -385,13 +390,18 @@ class TwitterHandler(FollowerApplicationHandler):
                                           user_id=self.app_account.user_id)
                 self.session.add(new_following)
                 self.session.commit()
-                print("Skipping new follower ...")
+                print("Skipping newly scanned follower ...")
                 following_entry = self.e.next_follower_entry(following_entry)
                 continue
             # follow in db, check and delete, if now > then + hiatus time ...
             else:
-                if datetime.now() > following_db.established + follow_back_hiatus:
-                    print("Follow expired, unfollowing ...")
+                follows_me = self.e.follower_follows_me(following_entry)
+                if (datetime.now() > following_db.established + follow_back_hiatus) or \
+                        (follows_me and datetime.now() > following_db.established + mutual_expire_hiatus):
+                    if follows_me:
+                        print("Mutual follow expired, unfollowing ...")
+                    else:
+                        print("Follow expired, unfollowing ...")
                     list_following_button = self.e.follower_button(following_entry)
                     list_following_button_text = list_following_button.text
                     if list_following_button_text != 'Unfollow':
@@ -404,7 +414,7 @@ class TwitterHandler(FollowerApplicationHandler):
 
                     # we need to wait and make sure button goes back to unfollowed state ...
                     WebDriverWait(following_entry, 60).until(
-                        lambda e: self.e.follower_button(e).text in BUTTON_TEXT_UNFOLLOWED)
+                        lambda e: self.e.follower_button(e).text in BUTTON_TEXT_NOT_FOLLOWING)
 
                     # create a new unfollow entry:
                     new_unfollowed = Unfollowed(name=following_db.name,
@@ -420,8 +430,12 @@ class TwitterHandler(FollowerApplicationHandler):
 
                     self.sleepmsrange(self.action_timeout)
                 else:
-                    time_remaining = (following_db.established + follow_back_hiatus) - datetime.now()
-                    print("Follow hiatus not reached!  {} left!".format(time_remaining))
+                    if follows_me:
+                        time_remaining = (following_db.established + mutual_expire_hiatus) - datetime.now()
+                        print("Mutual expire hiatus not reached!  {} left!".format(time_remaining))
+                    else:
+                        time_remaining = (following_db.established + follow_back_hiatus) - datetime.now()
+                        print("Follow hiatus not reached!  {} left!".format(time_remaining))
             try:
                 following_entry = self.e.next_follower_entry(following_entry)
             except NoSuchElementException:

@@ -21,7 +21,7 @@ import datetime
 import copy
 from itertools import chain
 
-# import pprint
+import pprint
 
 from sqlalchemy import create_engine
 
@@ -39,23 +39,37 @@ default_config = {
     'default_config1': 'foo',
     'default_site_config1': 'foo_default',
 
+    'orm_connect_args': {'timeout': 60},
+
     'app:*': {
         'daily_max_follows': 400,
-        'round_max_follows': 50,
+        'round_max_follows': 20,
         'daily_max_unfollows': 400,
-        'round_max_unfollows': 50,
-        # 1-5 minutes:
-        'action_timeout': (1000*60, 1000*60*5),
+        'round_max_unfollows': 20,
+
+        # 5 seconds to 5 minutes:
+        'action_timeout': (1000*5, 1000*60*2),
 
         'follow_back_hiatus': datetime.timedelta(days=7),
-        'unfollow_hiatus': datetime.timedelta(days=30*6),
+        'unfollow_hiatus': datetime.timedelta(days=30*3),
+        'mutual_expire_hiatus': datetime.timedelta(days=30*3),
 
         'ignore_no_image': True,
         'ignore_verified': False,
     },
+    'app:instagram': {
+        'daily_max_follows': 300,
+        'round_max_follows': 20
+    },
     'app:youtube': {
         'video_watch_timeout': (2*60, 5*60),
         'like_every_video': True
+    },
+    'app:twitter': {
+
+    },
+    'app:soundcloud': {
+
     }
 }
 
@@ -133,7 +147,11 @@ def load_config(filename=None):
 
     # finally load database:
     if 'database_url' in new_config:
-        new_config['database_engine'] = create_engine(new_config['database_url'])
+        if 'orm_connect_args' in new_config:
+            new_config['database_engine'] = create_engine(new_config['database_url'],
+                                                          connect_args=new_config['orm_connect_args'])
+        else:
+            new_config['database_engine'] = create_engine(new_config['database_url'])
     else:
         print("load_config: warning: no database_url provided, no 'database_engine' created")
 
