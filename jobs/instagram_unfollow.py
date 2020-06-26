@@ -26,6 +26,7 @@ from taciturn.job import TaciturnJob
 from taciturn.applications.instagram import InstagramHandler
 
 from time import sleep
+import traceback
 
 
 class InstagramUnfollowJob(TaciturnJob):
@@ -78,6 +79,7 @@ class InstagramUnfollowJob(TaciturnJob):
                     unfollowed_count = instagram_handler.start_unfollow(quota=round_max_unfollows)
                 except (NoSuchElementException, TimeoutException, StaleElementReferenceException) as e:
                     print("Round failed try {} of {}, selenium exception occurred: {}".format(retry_n, round_retries, e))
+                    traceback.print_exc()
                     # if this is the last try and it failed, re-raise the exception!
                     if retry_n >= round_retries:
                         raise e

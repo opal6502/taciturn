@@ -108,7 +108,7 @@ class TwitterHandler(FollowerApplicationHandler):
         # ... then get the page we want:
         self.driver.get("{}/{}/followers".format(self.application_url, target_account))
 
-        self.e.followers_tab_link()
+        # self.e.followers_tab_link()
         tab_overlap_y = self.e.followers_tab_overlap()
 
         unfollow_hiatus = unfollow_hiatus or self.follow_back_hiatus
@@ -355,6 +355,7 @@ class TwitterHandler(FollowerApplicationHandler):
         unfollow_count = 0
         follow_back_hiatus = follow_back_hiatus or self.follow_back_hiatus
         mutual_expire_hiatus = mutual_expire_hiatus or self.mutual_expire_hiatus
+        tab_overlap_y = self.e.followers_tab_overlap()
 
         while quota is None or quota > unfollow_count:
             # check to see if this looks like the end:
@@ -363,7 +364,7 @@ class TwitterHandler(FollowerApplicationHandler):
                 return unfollow_count
 
             # check to see if entry is in the database:
-            self.scrollto_element(following_entry)
+            self.scrollto_element(following_entry, offset=tab_overlap_y)
 
             following_username = self.e.follower_username(following_entry).text
             print("Scanning {} ...".format(following_username))
@@ -404,11 +405,11 @@ class TwitterHandler(FollowerApplicationHandler):
                         print("Follow expired, unfollowing ...")
                     list_following_button = self.e.follower_button(following_entry)
                     list_following_button_text = list_following_button.text
-                    if list_following_button_text != 'Unfollow':
+                    if list_following_button_text not in BUTTON_TEXT_FOLLOWING:
                         raise AppUnexpectedStateException(
                             "Unfollow button for '{}' says '{}'?".format(following_username,
                                                                          list_following_button_text))
-                    list_following_button_text.click()
+                    list_following_button.click()
                     lb_following_button = self.e.unfollow_lightbox_button()
                     lb_following_button.click()
 

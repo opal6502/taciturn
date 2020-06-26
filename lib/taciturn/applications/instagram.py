@@ -356,6 +356,8 @@ class InstagramHandler(FollowerApplicationHandler):
         # first_unfollow_entry = self.e.follower_entry_n(unfollow_entry_n)
         # WebDriverWait(first_unfollow_entry, 60*3).until(lambda e: self.e.follower_username(e))
 
+        print("Waiting for list to load ...")
+
         # give the followers tab a very good chance to load ...
         for try_n in range(1, self.default_load_retries + 1):
             try:
@@ -369,6 +371,8 @@ class InstagramHandler(FollowerApplicationHandler):
 
         while quota is None or unfollow_count < quota:
 
+            print("Scanning entry #{} in followers list ...".format(unfollow_entry_n))
+
             for try_n in range(1, self.default_load_retries + 1):
                 try:
                     unfollow_entry = self.e.follower_entry_n(unfollow_entry_n)
@@ -377,6 +381,8 @@ class InstagramHandler(FollowerApplicationHandler):
 
                     entry_button = self.e.follower_button(unfollow_entry)
                     entry_button_text = entry_button.text
+
+                    self.driver.execute_script("arguments[0].focus()", unfollow_entry)
                 except (StaleElementReferenceException, NoSuchElementException, TimeoutException) as e:
                     print("first_follower_entry, try {} of {}, raised exception: {}" \
                           .format(try_n, self.default_load_retries, e))
@@ -389,11 +395,12 @@ class InstagramHandler(FollowerApplicationHandler):
             if self.in_whitelist(unfollow_username):
                 print("'{}' in whitelist, skipping ...".format(unfollow_username))
                 if self.e.is_followers_end():
-                    print("End of list encountered, returning.")
+                    print("End of list encountered, returning. A")
                     return unfollow_count
-                else:
-                    unfollow_entry_n += 1
-                    continue
+                unfollow_entry_n += 1
+                continue
+
+            print("Getting entry for '{}' in db ...".format(unfollow_username))
 
             # get following entry from db ...
             following_db = self.session.query(Following) \
@@ -413,7 +420,7 @@ class InstagramHandler(FollowerApplicationHandler):
                 self.session.commit()
                 print("Skipping newly scanned follower ...")
                 if self.e.is_followers_end():
-                    print("End of list encountered, returning.")
+                    print("End of list encountered, returning. B")
                     return unfollow_count
                 else:
                     unfollow_entry_n += 1
@@ -422,6 +429,7 @@ class InstagramHandler(FollowerApplicationHandler):
             else:
                 # since, on instagram, there's no indication on the page for if a user in the following
                 # list follows back, we have to rely on the database:
+                print("Checking if '{}' follows back in db ...".format(unfollow_username))
                 follows_me = self.session.query(Follower).filter(
                                                     and_(Follower.name == unfollow_username,
                                                          Follower.user_id == self.app_account.user_id,
@@ -438,11 +446,11 @@ class InstagramHandler(FollowerApplicationHandler):
                         print("Follow expired, unfollowing ...")
                     list_following_button = self.e.follower_button(unfollow_entry)
                     list_following_button_text = list_following_button.text
-                    if list_following_button_text != 'Unfollow':
+                    if list_following_button_text not in BUTTON_TEXT_FOLLOWING:
                         raise AppUnexpectedStateException(
                             "Unfollow button for '{}' says '{}'?".format(unfollow_username,
                                                                         list_following_button_text))
-                    list_following_button_text.click()
+                    list_following_button.click()
                     lb_following_button = self.e.unfollow_lightbox_button()
                     lb_following_button.click()
 
@@ -461,7 +469,7 @@ class InstagramHandler(FollowerApplicationHandler):
 
                     self.session.commit()
                     if self.e.is_followers_end():
-                        print("End of list encountered, returning.")
+                        print("End of list encountered, returning. C")
                         return unfollow_count
                     else:
                         self.sleepmsrange(self.action_timeout)
@@ -474,6 +482,9 @@ class InstagramHandler(FollowerApplicationHandler):
                         time_remaining = (following_db.established + follow_back_hiatus) - datetime.now()
                         print("Follow hiatus not reached!  {} left!".format(time_remaining))
 
+                if self.e.is_followers_end(unfollow_entry_n):
+                    print("List end encountered, stopping. D")
+                    return unfollow_count
                 unfollow_entry_n += 1
 
         return unfollow_count
@@ -575,19 +586,50 @@ class InstagramHandlerWebElements(ApplicationWebElements):
 
     def follower_entry_n(self, n=1):
         # lightbox = self.followers_lightbox()
-        return self.driver.find_element(By.XPATH, self._followers_lighbox_prefix\
-                                     +'/div/div[2]/ul/div/li[{}]'.format(n))
+        return self.driver.find_elements(By.XPATH, self._followers_lighbox_prefix
+                                     # '/div/div[2]/ul/div/li[{}]'.format(n)
+                                     +'/div/div[2]/ul/div/li')[n - 1]
 
     def follower_entry_last(self):
-        return self.driver.find_element(By.XPATH, self._followers_lighbox_prefix
-                                        +'/div/div[2]/ul/div/li[last()]')
+        return self.driver.find_elements(By.XPATH, self._followers_lighbox_prefix
+                                        # /div/div[2]/ul/div/li[last()]
+                                        +'/div/div[2]/ul/div/li')[-1]
+
+    def follower_entries_len(self):
+        return len(self.driver.find_elements(By.XPATH, self._followers_lighbox_prefix
+                                        # /div/div[2]/ul/div/li[last()]
+                                        +'/div/div[2]/ul/div/li'))
 
     def is_followers_end(self, n=1):
-        entry_n = WebDriverWait(self.driver, 90).until(lambda x: self.follower_entry_n(n))
-        entry_end = WebDriverWait(self.driver, 90).until(lambda x: self.follower_entry_last())
-        if self.follower_username(entry_n).text == self.follower_username(entry_end).text:
+        print("is_followers_end: called ...")
+
+        def _compare_elements_n(x):
+            len_e = self.follower_entries_len()
+            print("is_followers_end: _compare_elements_n: {} == {}".format(n, len_e))
+            return n == len_e
+
+        def _compare_elements(x):
+            entry_n = self.follower_entry_n(n)
+            entry_end = self.follower_entry_last()
+            entry_n_text = self.follower_username(entry_n).text
+            entry_end_text = self.follower_username(entry_end).text
+            print("is_followers_end: _compare_elements: '{}' == '{}'".format(entry_n_text, entry_end_text))
+            return entry_n_text == entry_end_text
+        try:
+            print("is_followers_end: waiting ...")
+            self.driver.implicitly_wait(60*5)
+            r = WebDriverWait(self.driver, timeout=60*5,
+                                 ignored_exceptions=(StaleElementReferenceException,))\
+                            .until_not(_compare_elements_n)
+
+            print("is_followers_end: returning", r)
+            return r
+        except TimeoutException:
+            print("is_followers_end: TimeoutException ...")
             return True
-        return False
+        finally:
+            self.driver.implicitly_wait(self.implicit_default_wait)
+
 
     def next_follower_entry(self, follower_entry):
         return follower_entry.find_element(By.XPATH, './following-sibling::li[1]')
@@ -637,6 +679,11 @@ class InstagramHandlerWebElements(ApplicationWebElements):
         def follow_click_verify(x):
             return self.follower_button(n).text in ('Following', 'Requested')
         return follow_click_verify
+
+    def unfollow_lightbox_button(self):
+        # /html/body/div[5]/div/div/div/div[3]/button[1]
+        return self.driver.find_element(By.XPATH, self._followers_lighbox_prefix +
+                                                  "//button[contains(.,'Unfollow')]")
 
     def image_upload_input(self):
         # user-agent mobile only!

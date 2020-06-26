@@ -26,6 +26,7 @@ from taciturn.job import TaciturnJob
 from taciturn.applications.instagram import InstagramHandler
 
 from time import sleep, time
+import traceback
 
 
 class InstagramFollowJob(TaciturnJob):
@@ -79,6 +80,7 @@ class InstagramFollowJob(TaciturnJob):
                     followed_count = instagram_handler.start_following(self.target_account, quota=round_max_follows)
                 except (NoSuchElementException, TimeoutException, StaleElementReferenceException) as e:
                     print("Round failed try {} of {}, selenium exception occurred: {}".format(retry_n, round_retries, e))
+                    traceback.print_exc()
                     # if this is the last try and it failed, re-raise the exception!
                     if retry_n >= round_retries:
                         raise e
