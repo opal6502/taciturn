@@ -32,8 +32,6 @@ from taciturn.config import load_config
 from selenium.webdriver import Chrome, Firefox, Remote
 from selenium import webdriver
 
-from selenium.webdriver.chrome.options import Options
-
 # base class abstraction:
 from abc import ABC
 from abc import abstractmethod
@@ -90,8 +88,6 @@ class BaseApplicationHandler(ABC):
         # init white/blacklists:
         self._load_access_lists()
 
-
-
     def _load_access_lists(self):
         # load whitelist:
         # print("_load_access_lists for user '{}' on app '{}'".format(self.app_account.name, self.application_name))
@@ -115,8 +111,13 @@ class BaseApplicationHandler(ABC):
 
     def init_webdriver(self, user_agent=None):
         # init Selenium:
-        webdriver_type = self.options.driver or self.config.get('selenium_webdriver')
+        if self.options.driver:
+            webdriver_type = self.options.driver[0]
+        else:
+            webdriver_type = self.options.driver or self.config.get('selenium_webdriver')
+
         if webdriver_type is None or webdriver_type == 'chrome':
+            from selenium.webdriver.chrome.options import Options
             if user_agent:
                 opts = Options()
                 opts.add_argument("user-agent={}".format(user_agent))
@@ -124,13 +125,28 @@ class BaseApplicationHandler(ABC):
             else:
                 self.driver = Chrome()
         elif webdriver_type == 'chrome_headless':
+            from selenium.webdriver.chrome.options import Options
             opts = Options()
             if user_agent:
                 opts.add_argument("user-agent={}".format(user_agent))
             opts.add_argument("--headless")
             self.driver = Chrome(options=opts)
         elif webdriver_type == 'firefox':
-            self.driver = Firefox()
+            from selenium.webdriver import FirefoxProfile
+            profile = FirefoxProfile()
+            if user_agent:
+                profile.set_preference('general.useragent.override', user_agent)
+            self.driver = Firefox(profile)
+        elif webdriver_type == 'firefox_headless':
+            from selenium.webdriver.firefox.options import Options
+            from selenium.webdriver import FirefoxProfile
+            profile = FirefoxProfile()
+            options = Options()
+            if user_agent:
+                profile.set_preference('general.useragent.override', user_agent)
+            options.headless = True
+            self.driver = Firefox(profile, options=options)
+            driver = webdriver.Firefox(options=options)
         elif webdriver_type == 'htmlunit':
             self.driver = Remote(desired_capabilities=webdriver.DesiredCapabilities.HTMLUNIT)
         elif webdriver_type == 'htmlunitwithjs':
