@@ -258,7 +258,7 @@ class FollowerApplicationHandler(BaseApplicationHandler):
         pass
 
     @abstractmethod
-    def start_unfollow(self, quota=None, follow_back_hiatus=None):
+    def start_unfollowing(self, quota=None, follow_back_hiatus=None):
         "scan followers, and unfollow accounts that we've been following for a time, and don't follow us back!"
         raise NotImplementedError
 

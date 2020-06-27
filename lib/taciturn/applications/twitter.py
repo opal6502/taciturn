@@ -349,7 +349,7 @@ class TwitterHandler(FollowerApplicationHandler):
 
         return entries_added
 
-    def start_unfollow(self, quota=None, follow_back_hiatus=None, mutual_expire_hiatus=None):
+    def start_unfollowing(self, quota=None, follow_back_hiatus=None, mutual_expire_hiatus=None):
         # print(" GET {}/{}/following".format(self.application_url, self.app_username))
         self.driver.get("{}/{}/following".format(self.application_url, self.app_username))
 

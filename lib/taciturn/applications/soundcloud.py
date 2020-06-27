@@ -88,7 +88,7 @@ class SoundcloudHandler(FollowerApplicationHandler):
     def start_following(self, target_account, quota=None, unfollow_hiatus=None):
         pass
 
-    def start_unfollow(self, quota=None, follow_back_hiatus=None):
+    def start_unfollowing(self, quota=None, follow_back_hiatus=None):
         pass
 
     def update_following(self):

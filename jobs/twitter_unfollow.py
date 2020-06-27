@@ -76,7 +76,7 @@ class TwitterUnfollowJob(TaciturnJob):
 
             for retry_n in range(1, round_retries+1):
                 try:
-                    unfollowed_count = twitter_handler.start_unfollow(quota=round_max_unfollows)
+                    unfollowed_count = twitter_handler.start_unfollowing(quota=round_max_unfollows)
                 except (NoSuchElementException, TimeoutException, StaleElementReferenceException) as e:
                     print("Round failed try {} of {}, selenium exception occurred: {}".format(retry_n, round_retries, e))
                     traceback.print_exc()
