@@ -42,7 +42,6 @@ class InstagramUpdateFollowingJob(TaciturnJob):
         # pre-load accounts for all apps this job uses:
         self.load_accounts()
 
-        self.target_account = options.target[0]
         self.stop_no_quota = options.stop
 
         self.options = options
@@ -52,7 +51,7 @@ class InstagramUpdateFollowingJob(TaciturnJob):
 
         # get user from database:
         instagram_account = self.get_account('instagram')
-        instagram_handler = InstagramHandler(self.session, instagram_account)
+        instagram_handler = InstagramHandler(self.options, self.session, instagram_account)
 
         instagram_handler.login()
 

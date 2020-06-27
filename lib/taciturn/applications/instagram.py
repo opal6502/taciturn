@@ -63,8 +63,8 @@ class InstagramHandler(FollowerApplicationHandler):
 
     follow_random_wait = (10, 60)
 
-    def __init__(self, db_session, app_account, elements=None):
-        super().__init__(db_session, app_account, InstagramHandlerWebElements)
+    def __init__(self, options, db_session, app_account, elements=None):
+        super().__init__(options, db_session, app_account, InstagramHandlerWebElements)
 
         self.follow_back_hiatus = self.config['app:instagram']['follow_back_hiatus']
         self.unfollow_hiatus = self.config['app:instagram']['unfollow_hiatus']

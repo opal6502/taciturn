@@ -5,6 +5,7 @@ from taciturn.job import TaciturnJob
 from taciturn.applications.soundcloud import SoundcloudHandler
 
 from time import sleep
+import sys
 
 
 class SoundcloudFollowJob(TaciturnJob):
@@ -19,6 +20,11 @@ class SoundcloudFollowJob(TaciturnJob):
         # pre-load accounts for all apps this job uses:
         self.load_accounts()
 
+        if options.target is None:
+            print("soundcloud_follow: you must specify a target account with -t account.")
+            options.print_help()
+            sys.exit(1)
+
         self.target_account = options.target[0]
         self.stop_no_quota = options.stop
 
@@ -29,7 +35,7 @@ class SoundcloudFollowJob(TaciturnJob):
 
         # get user from database:
         soundcloud_account = self.get_account('soundcloud')
-        soundcloud_handler = SoundcloudHandler(self.session, soundcloud_account)
+        soundcloud_handler = SoundcloudHandler(self.options, self.session, soundcloud_account)
 
         # figure out what to do for the next 24 hours:
 

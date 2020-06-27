@@ -75,10 +75,9 @@ class BaseApplicationHandler(ABC):
     # database
     db_default_uri = "sqlite:///db/taciturn.sqlite"
 
-    def __init__(self, db_session, app_account, elements=None):
-        # database rows, as SQLAlchemy objects:
-        # self.app_db = None
-        # self.user = None
+    def __init__(self, options, db_session, app_account, elements=None):
+
+        self.options = options
 
         self.session = db_session
         self.app_username = app_account.name
@@ -116,7 +115,7 @@ class BaseApplicationHandler(ABC):
 
     def init_webdriver(self, user_agent=None):
         # init Selenium:
-        webdriver_type = self.config.get('selenium_webdriver')
+        webdriver_type = self.options.driver or self.config.get('selenium_webdriver')
         if webdriver_type is None or webdriver_type == 'chrome':
             if user_agent:
                 opts = Options()

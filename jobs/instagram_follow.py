@@ -27,6 +27,7 @@ from taciturn.applications.instagram import InstagramHandler
 
 from time import sleep, time
 import traceback
+import sys
 
 
 class InstagramFollowJob(TaciturnJob):
@@ -41,6 +42,10 @@ class InstagramFollowJob(TaciturnJob):
         # pre-load accounts for all apps this job uses:
         self.load_accounts()
 
+        if options.target is None:
+            print("instagram_follow: you must specify a target account with -t account.")
+            sys.exit(1)
+
         self.target_account = options.target[0]
         self.stop_no_quota = options.stop
 
@@ -51,7 +56,7 @@ class InstagramFollowJob(TaciturnJob):
 
         # get user from database:
         instagram_account = self.get_account('instagram')
-        instagram_handler = InstagramHandler(self.session, instagram_account)
+        instagram_handler = InstagramHandler(self.options, self.session, instagram_account)
 
         # figure out what to do for the next 24 hours:
 

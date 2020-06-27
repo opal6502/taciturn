@@ -157,86 +157,50 @@ admin_dispatcher = {
 }
 
 
-class CommandAction(argparse.Action):
-    def __call__(self, parser, namespace, values, option_string=None):
-        print("CommandAction: namespace = ", namespace)
-        print("CommandAction: values = ", values)
-
-        CommandVerbArg = collections.namedtuple('CommandVerbArg', ['name', 'verb', 'arg'])
-
-        if len(values) == 0:
-            raise ValueError("One command name argument required.")
-        elif len(values) == 1:
-            cn = values[0]
-            setattr(namespace, self.dest, CommandVerbArg(cn, command_verb_default, None))
-        elif len(values) == 2:
-            cn, cv = values
-            # admin commands ...
-            setattr(namespace, self.dest, CommandVerbArg(cn, cv, None))
-        elif len(values) == 3:
-            cn, cv, ca = values
-            setattr(namespace, self.dest, CommandVerbArg(cn, cv, ca))
-        elif len(values) > 2:
-            raise ValueError("Too many arguments provided, command syntax is: { command [ verb [ arg ] ] }")
-
-
 # parse arguments:
 def parse_arguments(args=None):
     if args is None:
         args = sys.argv[1:]
 
     ap = argparse.ArgumentParser(description='Taciturn CLI tool.')
-    ap.add_argument('-n', '--app', type=str, nargs=1,
-                    help='specify application name for single-app jobs')
     ap.add_argument('-u', '--user', type=str, nargs=1,
-                    help='specify user for single-user jobs')
-    ap.add_argument('-j', '--job', type=str, nargs=1,
+                    help='specify a taciturn user for job')
+    ap.add_argument('-j', '--job', type=str, nargs=1, required=True,
                     help="job to run, with arguments for job")
-    ap.add_argument('-l', '--queue', type=str, nargs='+',
-                    help="specify a queue to list, add or delete from")
-    ap.add_argument('-a', '--admin', type=str, nargs='+', action=CommandAction,
-                    help='Command, one of {}'.format(', '.join(all_command_choices)))
-    ap.add_argument('-t', '--target', type=str, nargs=1, required=True,
+    #ap.add_argument('-l', '--queue', type=str, nargs='+',
+    #               help="specify a queue to list, add or delete from")
+    ap.add_argument('-t', '--target', type=str, nargs=1, default=None,
                     help="Target account")
     ap.add_argument('-m', '--max', type=int,
-                    help="Maximum follows per day, divided into quota rounds")
+                    help="Maximum follows per 24-hour period, divided into quota rounds")
     ap.add_argument('-q', '--quota', type=int,
-                    help="Quota of follows per round")
+                    help="Quota of follows per each round in a 24-hour period")
     ap.add_argument('-s', '--stop', action='store_true',
-                    help="Stop if quota can't be fulfilled")
+                    help="Stop job if round quota can't be fulfilled")
+    ap.add_argument('-D', '--driver', type=str, nargs=1, default=None,
+                    help="Webdriver to use: htmlunit htmlunitjs chrome chrome_headless firefox firefox_headless")
 
     # parse arguments:
     pa = ap.parse_args(args)
     print(pa)
 
-    # validate argument state:
-    if pa.job is not None and pa.admin is not None:
-        raise ValueError("You must either specify a job or admin.")
-    elif pa.admin is not None:
-        if pa.admin == 'user' and pa.user is not None:
-            raise ValueError("Can't use -u with 'user' admin.")
-        if pa.admin == 'application' and pa.app is not None:
-            raise ValueError("Can't use -n with 'application' admin.")
-        if pa.admin.name in command_job_choices and \
-                (pa.app is None or pa.user is None):
-            raise ValueError("Both app and user must be provided for '{}' command".format(pa.admin.name))
-        # if pa.app is not None and pa.user is None:
-        #     raise ValueError("You must provide a user and app name.")
-    elif pa.job is not None:
-        pass
-
     return pa
 
 
 if __name__ == '__main__':
-    options = parse_arguments()
+    pa = parse_arguments()
 
     # XXX need to put in better input validation here!
 
-    if options.job is not None:
-        run_job(options.job[0], options)
-    elif options.admin is not None:
-        # displatch command!
-        admin_dispatcher[options.admin.name](options.admin.verb,
-                                             arg=options.admin.arg,
-                                             application=options.app[0])
+    if pa.job is not None:
+        run_job(pa.job[0], pa)
+    else:
+        print("You must specify a job with -j job-name")
+        pa.print_help()
+
+    # elif pa.admin is not None:
+    #     # displatch command!
+    #     admin_dispatcher[pa.admin.name](pa.admin.verb,
+    #                                     arg=pa.admin.arg,
+    #                                         application=pa.app[0])
+

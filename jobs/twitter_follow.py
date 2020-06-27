@@ -27,6 +27,7 @@ from taciturn.applications.twitter import TwitterHandler
 
 from time import sleep, time
 import traceback
+import sys
 
 
 class TwitterFollowJob(TaciturnJob):
@@ -42,6 +43,10 @@ class TwitterFollowJob(TaciturnJob):
         # pre-load accounts for all apps this job uses:
         self.load_accounts()
 
+        if options.target is None:
+            print("twitter_follow: you must specify a target account with -t account.")
+            sys.exit(1)
+
         self.target_account = options.target[0]
         self.stop_no_quota = options.stop
 
@@ -52,7 +57,7 @@ class TwitterFollowJob(TaciturnJob):
 
         # get user from database:
         twitter_account = self.get_account('twitter')
-        twitter_handler = TwitterHandler(self.session, twitter_account)
+        twitter_handler = TwitterHandler(self.options, self.session, twitter_account)
 
         # figure out what to do for the next 24 hours:
 

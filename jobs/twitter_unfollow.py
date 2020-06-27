@@ -39,10 +39,9 @@ class TwitterUnfollowJob(TaciturnJob):
         self.accounts = dict()
         self.username = options.user[0]
 
-        # pre-load accounts for all apps this job uses:
         self.load_accounts()
 
-        self.target_account = options.target[0]
+        # self.target_account = options.target[0]
         self.stop_no_quota = options.stop
 
         self.options = options
@@ -52,7 +51,7 @@ class TwitterUnfollowJob(TaciturnJob):
 
         # get user from database:
         twitter_account = self.get_account('twitter')
-        twitter_handler = TwitterHandler(self.session, twitter_account)
+        twitter_handler = TwitterHandler(self.options, self.session, twitter_account)
 
         # figure out what to do for the next 24 hours:
 
