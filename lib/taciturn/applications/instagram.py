@@ -162,6 +162,7 @@ class InstagramHandler(FollowerApplicationHandler):
             try:
                 first_follower_entry = self.e.follower_entry_n(follower_entry_n)
                 self.e.follower_username(first_follower_entry)
+                break
             except (StaleElementReferenceException, TimeoutException, NoSuchElementException) as e:
                 print("first_follower_entry, try {} of {}, raised exception: {}" \
                       .format(try_n, self.default_load_retries, e))
@@ -183,6 +184,7 @@ class InstagramHandler(FollowerApplicationHandler):
 
                     entry_button = self.e.follower_button(follower_entry)
                     entry_button_text = entry_button.text
+                    break
                 except (StaleElementReferenceException, TimeoutException) as e:
                     print("first_follower_entry, try {} of {}, raised exception: {}" \
                           .format(try_n, self.default_load_retries, e))
@@ -272,8 +274,15 @@ class InstagramHandler(FollowerApplicationHandler):
                     continue
 
                 print("Clicking 'Follow' button ...")
-
-                entry_button.click()
+                for try_n in range(1, self.default_load_retries + 1):
+                    try:
+                        entry_button.click()
+                        break
+                    except (StaleElementReferenceException, TimeoutException) as e:
+                        print("first_follower_entry, try {} of {}, raised exception: {}" \
+                              .format(try_n, self.default_load_retries, e))
+                        if try_n >= self.default_load_retries:
+                            raise e
 
                 # now, if instagram is limiting our follows, the button will revert back to 'Follow' after a few
                 # seconds ...
@@ -397,9 +406,10 @@ class InstagramHandler(FollowerApplicationHandler):
             try:
                 first_unfollow_entry = self.e.follower_entry_n(unfollow_entry_n)
                 self.e.follower_username(first_unfollow_entry)
+                break
             except (StaleElementReferenceException, NoSuchElementException, TimeoutException) as e:
-                print("first_follower_entry, try {} of {}, raised exception: {}" \
-                      .format(try_n, self.default_load_retries, e))
+                print("first_follower_entry, try {} of {}, raised exception: {}"
+                        .format(try_n, self.default_load_retries, e))
                 if try_n >= self.default_load_retries:
                     raise e
 
@@ -433,7 +443,7 @@ class InstagramHandler(FollowerApplicationHandler):
             # if in whitelist, skip ...
             if self.in_whitelist(unfollow_username):
                 print("'{}' in whitelist, skipping ...".format(unfollow_username))
-                if self.e.is_followers_end():
+                if self.e.is_followers_end(unfollow_entry_n):
                     print("End of list encountered, returning. A")
                     return unfollow_count
                 unfollow_entry_n += 1
@@ -459,7 +469,7 @@ class InstagramHandler(FollowerApplicationHandler):
                 self.session.add(new_following)
                 self.session.commit()
                 print("Skipping newly scanned follower ...")
-                if self.e.is_followers_end():
+                if self.e.is_followers_end(unfollow_entry_n):
                     print("End of list encountered, returning. B")
                     return unfollow_count
                 else:
@@ -508,7 +518,7 @@ class InstagramHandler(FollowerApplicationHandler):
                     self.session.delete(following_db)
 
                     self.session.commit()
-                    if self.e.is_followers_end():
+                    if self.e.is_followers_end(unfollow_entry_n):
                         print("End of list encountered, returning. C")
                         return unfollow_count
                     else:
@@ -777,21 +787,21 @@ class InstagramHandlerWebElements(ApplicationWebElements):
 
     def follower_entry_n(self, n=1):
         # lightbox = self.followers_lightbox()
-        return self.driver.find_elements(By.XPATH, self._followers_lighbox_prefix
-                                     # '/div/div[2]/ul/div/li[{}]'.format(n)
-                                     +'/div/div[2]/ul/div/li')[n - 1]
+        return self.driver.find_element(By.XPATH, self._followers_lighbox_prefix
+                                      +'/div/div[2]/ul/div/li[{}]'.format(n))
+                                     #+'/div/div[2]/ul/div/li')[n - 1]
 
     def follower_entry_last(self):
-        return self.driver.find_elements(By.XPATH, self._followers_lighbox_prefix
-                                        # /div/div[2]/ul/div/li[last()]
-                                        +'/div/div[2]/ul/div/li')[-1]
+        return self.driver.find_element(By.XPATH, self._followers_lighbox_prefix
+                                        +'/div/div[2]/ul/div/li[last()]')
+                                        # +'/div/div[2]/ul/div/li')[-1]
 
     def follower_entries_len(self):
         return len(self.driver.find_elements(By.XPATH, self._followers_lighbox_prefix
                                         # /div/div[2]/ul/div/li[last()]
                                         +'/div/div[2]/ul/div/li'))
 
-    def is_followers_end(self, n=1):
+    def is_followers_end(self, n):
         print("is_followers_end: called ...")
 
         def _compare_elements_n(x):
