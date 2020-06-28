@@ -5,6 +5,9 @@
 ## local junk:
 db/
 
+## site-specific cookies
+cookies/*.txt
+
 ### Database ###
 *.accdb
 *.db

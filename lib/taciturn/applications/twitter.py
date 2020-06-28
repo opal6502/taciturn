@@ -173,7 +173,7 @@ class TwitterHandler(FollowerApplicationHandler):
             print("start_following: entry_button_text default? ", entry_is_default_image)
 
             # try to follow:
-            if entry_button_text == 'Follow':
+            if entry_button_text in BUTTON_TEXT_NOT_FOLLOWING:
                 print("start_following: checking records before following ...")
                 # check to see if we're already (supposed to be following) this user:
                 already_following = self.session.query(Following) \
@@ -185,7 +185,7 @@ class TwitterHandler(FollowerApplicationHandler):
                 # XXX this probably means a locked account has refused our request, and we should
                 # add it to unfollowed for a long timeout ...
                 if already_following is not None:
-                    print("Warning: user '{}' already recorded as following?"
+                    print("Warning: not followed user '{}' already recorded as following?"
                           "  Moving to unfollowed.".format(entry_username))
                     self.session.delete(already_following)
 
@@ -211,6 +211,7 @@ class TwitterHandler(FollowerApplicationHandler):
                     print("Already followed and unfollowed this user '{}', "
                           "will follow again after {}".format(entry_username,
                                                               already_unfollowed.established + unfollow_hiatus))
+                    follower_entry = self.e.next_follower_entry(follower_entry)
                     continue
 
                 print("Clicking 'Follow' button ...")

@@ -167,8 +167,6 @@ def parse_arguments(args=None):
                     help='specify a taciturn user for job')
     ap.add_argument('-j', '--job', type=str, nargs=1, required=True,
                     help="job to run, with arguments for job")
-    #ap.add_argument('-l', '--queue', type=str, nargs='+',
-    #               help="specify a queue to list, add or delete from")
     ap.add_argument('-t', '--target', type=str, nargs=1, default=None,
                     help="Target account")
     ap.add_argument('-m', '--max', type=int,
@@ -179,6 +177,8 @@ def parse_arguments(args=None):
                     help="Stop job if round quota can't be fulfilled")
     ap.add_argument('-D', '--driver', type=str, nargs=1, default=None,
                     help="Webdriver to use: htmlunit htmlunitjs chrome chrome_headless firefox firefox_headless")
+    ap.add_argument('-C', '--cookies', type=str, nargs=1, default=None,
+                    help="Load a cookies.txt file")
 
     # parse arguments:
     pa = ap.parse_args(args)
@@ -190,17 +190,8 @@ def parse_arguments(args=None):
 if __name__ == '__main__':
     pa = parse_arguments()
 
-    # XXX need to put in better input validation here!
-
     if pa.job is not None:
         run_job(pa.job[0], pa)
     else:
         print("You must specify a job with -j job-name")
-        pa.print_help()
-
-    # elif pa.admin is not None:
-    #     # displatch command!
-    #     admin_dispatcher[pa.admin.name](pa.admin.verb,
-    #                                     arg=pa.admin.arg,
-    #                                         application=pa.app[0])
-
+        sys.exit(1)

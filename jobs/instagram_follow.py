@@ -25,9 +25,11 @@ from taciturn.job import TaciturnJob
 
 from taciturn.applications.instagram import InstagramHandler
 
+from datetime import timedelta
 from time import sleep, time
 import traceback
 import sys
+import math
 
 
 class InstagramFollowJob(TaciturnJob):
@@ -97,6 +99,12 @@ class InstagramFollowJob(TaciturnJob):
                 failed_rounds += 1
 
             job_time = time() - start_epoch
+            sleep_time = round_timeout - job_time
+            if sleep_time < 0:
+                print("instagram_follow: warning: job took {} longer than expected!"\
+                      .format(timedelta(seconds=math.fabs(sleep_time))))
+                print("instagram_follow: no sleep time between rounds!")
+                sleep_time = 0
 
             if followed_count < round_max_follows:
                 print("instagram_follow: couldn't fulfill quota:"
@@ -106,10 +114,10 @@ class InstagramFollowJob(TaciturnJob):
                     break
             elif followed_count == round_max_follows and round_n < rounds_per_day:
                 print("Followed {} users, round complete."
-                      "  Sleeping for {} hours".format(followed_count, (round_timeout - job_time) / (60*60)))
+                      "  Sleeping for {}".format(followed_count, timedelta(seconds=sleep_time)))
 
             followed_total += followed_count
-            sleep(round_timeout - job_time)
+            sleep(sleep_time)
 
         print("Ran {} rounds, unfollowing {} accounts, {} rounds failed"
                 .format(rounds_per_day, followed_total, failed_rounds))

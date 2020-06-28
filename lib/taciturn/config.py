@@ -32,6 +32,7 @@ taciturn_root = os.environ['TACITURN_ROOT']
 
 default_config = {
     'taciturn_root': taciturn_root,
+    'cookie_dir': os.path.join(taciturn_root, 'cookies'),
     'database_url': 'sqlite:///' + os.path.join(taciturn_root, 'db', 'taciturn.sqlite'),
     'asset_root': os.path.join(taciturn_root, 'assets'),
 
@@ -45,9 +46,9 @@ default_config = {
 
     'app:*': {
         'daily_max_follows': 400,
-        'round_max_follows': 20,
+        'round_max_follows': 30,
         'daily_max_unfollows': 400,
-        'round_max_unfollows': 20,
+        'round_max_unfollows': 30,
 
         # 5 seconds to 5 minutes:
         'action_timeout': (1000*5, 1000*60*2),
@@ -61,7 +62,7 @@ default_config = {
     },
     'app:instagram': {
         'daily_max_follows': 300,
-        'round_max_follows': 20
+        'round_max_follows': 30
     },
     'app:youtube': {
         'video_watch_timeout': (2*60, 5*60),
@@ -71,7 +72,10 @@ default_config = {
 
     },
     'app:soundcloud': {
-
+        'daily_max_follows': 40,
+        'round_max_follows': 40,
+        'daily_max_unfollows': 40,
+        'round_max_unfollows': 40
     }
 }
 

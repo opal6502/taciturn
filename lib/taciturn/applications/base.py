@@ -46,6 +46,7 @@ import os
 import time
 import random
 import numbers
+from http.cookiejar import MozillaCookieJar
 
 
 class BaseApplicationHandler(ABC):
@@ -160,6 +161,14 @@ class BaseApplicationHandler(ABC):
             self.e = self._elements_cls(self.driver, self.implicit_wait_default)
         else:
             print("Warning: it's a good idea to use the ApplicationWebElements pattern for your webelement selectors!")
+
+    def load_cookies(self, cookie_file):
+        print("loading cookies from {}".format(cookie_file))
+        cookiejar = MozillaCookieJar(cookie_file)
+        cookiejar.load()
+        for c in cookiejar:
+            self.driver.get_cookie({'name': c.name, 'value': c.value})
+        print("done loading cookies.")
 
     def in_whitelist(self, name):
         return name.lower() in self.whitelist
