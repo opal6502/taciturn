@@ -86,6 +86,8 @@ class BaseApplicationHandler(ABC):
 
         self.config = load_config()
 
+        self.screenshots_dir = self.config.get('screenshots_dir')
+
         # init white/blacklists:
         self._load_access_lists()
 
@@ -119,8 +121,12 @@ class BaseApplicationHandler(ABC):
 
         if webdriver_type is None or webdriver_type == 'chrome':
             from selenium.webdriver.chrome.options import Options
+            opts = Options()
+            opts.add_argument("--start-maximized")
+            opts.add_argument("--window-size=1920,1080")
+            opts.add_argument("--disable-popup-blocking")
+            opts.page_load_strategy = 'normal'
             if user_agent:
-                opts = Options()
                 opts.add_argument("user-agent={}".format(user_agent))
                 self.driver = Chrome(options=opts)
             else:
@@ -128,6 +134,10 @@ class BaseApplicationHandler(ABC):
         elif webdriver_type == 'chrome_headless':
             from selenium.webdriver.chrome.options import Options
             opts = Options()
+            opts.add_argument("--start-maximized")
+            opts.add_argument("--window-size=1920,1080")
+            opts.add_argument("--disable-popup-blocking")
+            opts.page_load_strategy = 'normal'
             if user_agent:
                 opts.add_argument("user-agent={}".format(user_agent))
             opts.add_argument("--headless")
@@ -201,7 +211,7 @@ class BaseApplicationHandler(ABC):
                                           default_image or self.default_profile_image))
 
     def scrollto_element(self, element, offset=None):
-        self.driver.execute_script("arguments[0].scrollIntoView(true);", element)
+        self.driver.execute_script("arguments[0].scrollIntoView();", element)
         if offset is not None:
             scroll_position = self.driver.execute_script("return document.documentElement.scrollTop;")
             self.driver.execute_script("window.scrollTo(0, arguments[0]);", scroll_position - offset)

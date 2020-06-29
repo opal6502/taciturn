@@ -33,6 +33,7 @@ taciturn_root = os.environ['TACITURN_ROOT']
 default_config = {
     'taciturn_root': taciturn_root,
     'cookie_dir': os.path.join(taciturn_root, 'cookies'),
+    'screenshots_dir': os.path.join(taciturn_root, 'screenshots'),
     'database_url': 'sqlite:///' + os.path.join(taciturn_root, 'db', 'taciturn.sqlite'),
     'asset_root': os.path.join(taciturn_root, 'assets'),
 
@@ -72,7 +73,7 @@ default_config = {
 
     },
     'app:soundcloud': {
-        'daily_max_follows': 40,
+        'daily_max_follows': 400,
         'round_max_follows': 40,
         'daily_max_unfollows': 40,
         'round_max_unfollows': 40

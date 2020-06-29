@@ -258,6 +258,9 @@ class TwitterHandler(FollowerApplicationHandler):
                 raise AppUnexpectedStateException(
                     "Entry button for '{}' says '{}'?".format(entry_username, entry_button.text))
 
+            if self.e.is_followers_end(follower_entry):
+                print("List end encountered, stopping.")
+                return followed_count
             follower_entry = self.e.next_follower_entry(follower_entry)
 
             # give the list scrolling a chance to catch up:
@@ -274,11 +277,6 @@ class TwitterHandler(FollowerApplicationHandler):
         entries_added = 0
 
         while True:
-            # check to see if this looks like the end:
-            if self.e.is_followers_end(follower_entry):
-                print("List end encountered, stopping.")
-                return entries_added
-
             # check to see if entry is in the database:
             self.scrollto_element(follower_entry)
             follower_username = self.e.follower_username(follower_entry).text
@@ -300,12 +298,16 @@ class TwitterHandler(FollowerApplicationHandler):
                 self.session.commit()
                 entries_added += 1
 
-            try:
-                follower_entry = self.e.next_follower_entry(follower_entry)
-            except NoSuchElementException:
-                break
+            # check to see if this looks like the end:
+            if self.e.is_followers_end(follower_entry):
+                print("List end encountered, stopping.")
+                return entries_added
 
-        return entries_added
+            follower_entry = self.e.next_follower_entry(follower_entry)
+            # try:
+            #     follower_entry = self.e.next_follower_entry(follower_entry)
+            # except NoSuchElementException:
+            #     break
 
     def update_following(self):
         # print(" GET {}/{}/following".format(self.application_url, self.app_username))
@@ -316,11 +318,6 @@ class TwitterHandler(FollowerApplicationHandler):
         entries_added = 0
 
         while True:
-            # check to see if this looks like the end:
-            if self.e.is_followers_end(following_entry):
-                print("List end encountered, stopping.")
-                return entries_added
-
             # check to see if entry is in the database:
             self.scrollto_element(following_entry)
 
@@ -343,12 +340,17 @@ class TwitterHandler(FollowerApplicationHandler):
                 self.session.commit()
                 entries_added += 1
 
-            try:
-                following_entry = self.e.next_follower_entry(following_entry)
-            except NoSuchElementException:
-                break
+            # check to see if this looks like the end:
+            if self.e.is_followers_end(following_entry):
+                print("List end encountered, stopping.")
+                return entries_added
 
-        return entries_added
+            follower_entry = self.e.next_follower_entry(following_entry)
+
+            # try:
+            #     following_entry = self.e.next_follower_entry(following_entry)
+            # except NoSuchElementException:
+            #     break
 
     def start_unfollowing(self, quota=None, follow_back_hiatus=None, mutual_expire_hiatus=None):
         # print(" GET {}/{}/following".format(self.application_url, self.app_username))
@@ -697,7 +699,6 @@ class TwitterHandlerWebElements(ApplicationWebElements):
             return False
         finally:
             self.driver.implicitly_wait(self.implicit_default_wait)
-        return False
 
     # def verify_unfollow_lightbox(self):
     #     # //*[@id="react-root"]/div/div/div[1]/div[2]/div/div/div/div[2]/div[2]/div[1]/span

@@ -101,7 +101,7 @@ class SoundcloudFollowJob(TaciturnJob):
 
         daily_max_follows = self.options.max or self.config['app:twitter']['daily_max_follows']
         round_max_follows = self.options.quota or self.config['app:twitter']['round_max_follows']
-        round_retries = 5
+        round_retries = 1
 
         daily_max_follows = self.options.max or self.config['app:soundcloud']['daily_max_follows']
         round_max_follows = self.options.quota or self.config['app:soundcloud']['round_max_follows']
@@ -121,21 +121,21 @@ class SoundcloudFollowJob(TaciturnJob):
             followed_count = 0
             start_epoch = time()
 
-            for retry_n in range(1, round_retries+1):
-                try:
-                    followed_count = soundcloud_handler.start_following(self.target_account, quota=round_max_follows)
-                except (NoSuchElementException, TimeoutException, StaleElementReferenceException) as e:
-                    print("Round failed try {} of {}, selenium exception occurred: {}".format(retry_n, round_retries, e))
-                    traceback.print_exc()
-                    # if this is the last try and it failed, re-raise the exception!
-                    if retry_n >= round_retries:
-                        raise e
-                    continue
-                else:
-                    break
-            else:
-                print("twitter_follow: round failed after {} tries!".format(retry_n))
-                failed_rounds += 1
+            # for retry_n in range(1, round_retries+1):
+            # try:
+            followed_count = soundcloud_handler.start_following(self.target_account, quota=round_max_follows)
+            # except (NoSuchElementException, TimeoutException, StaleElementReferenceException) as e:
+            #     print("Round failed try {} of {}, selenium exception occurred: {}".format(1, round_retries, e))
+            #     traceback.print_exc()
+            #     # if this is the last try and it failed, re-raise the exception!
+            #     # if retry_n >= round_retries:
+            #     raise e
+            # continue
+            # else:
+            #    break
+            # else:
+            #     print("twitter_follow: round failed after {} tries!".format(retry_n))
+            #     failed_rounds += 1
 
             job_time = time() - start_epoch
 
@@ -149,6 +149,9 @@ class SoundcloudFollowJob(TaciturnJob):
                 print("Followed {} users, round complete."
                       "  Sleeping for {} hours".format(followed_count, (round_timeout - job_time) / (60*60)))
 
+            if round_n >= rounds_per_day:
+                break
+
             followed_total += followed_count
             sleep(round_timeout - job_time)
 
@@ -156,7 +159,7 @@ class SoundcloudFollowJob(TaciturnJob):
                 .format(rounds_per_day, followed_total, failed_rounds))
 
         print("Job complete.")
-        twitter_handler.quit()
+        soundcloud_handler.quit()
 
 
 job = SoundcloudFollowJob()
