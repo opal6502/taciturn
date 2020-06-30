@@ -202,6 +202,9 @@ class InstagramHandler(FollowerApplicationHandler):
             if entry_button_text in BUTTON_TEXT_FOLLOWING:
                 print("start_following: already following, skip ...")
                 # XXX cross reference with database here?
+                if self.e.is_followers_end(follower_entry_n):
+                    print("End of list encountered, returning. A")
+                    return followed_count
                 follower_entry_n += 1
                 # follower_entry = self.e.follower_entry_n(follower_entry)
                 continue
@@ -209,6 +212,9 @@ class InstagramHandler(FollowerApplicationHandler):
             entry_is_default_image = self.is_default_image(entry_image_src)
             if entry_is_default_image:
                 print("start_following: image is default, skip ...")
+                if self.e.is_followers_end(follower_entry_n):
+                    print("End of list encountered, returning. A")
+                    return followed_count
                 follower_entry_n += 1
                 # follower_entry = self.e.follower_entry_n(follower_entry)
                 continue
@@ -229,6 +235,9 @@ class InstagramHandler(FollowerApplicationHandler):
                 time_remaining = (unfollowed.established + unfollow_hiatus) - datetime.now()
                 print("Followed/unfollowed too recently, can follow again after", time_remaining)
                 # follower_entry = self.e.follower_entry_n(follower_entry_n)
+                if self.e.is_followers_end(follower_entry_n):
+                    print("End of list encountered, returning. A")
+                    return followed_count
                 follower_entry_n += 1
                 continue
 
@@ -240,6 +249,9 @@ class InstagramHandler(FollowerApplicationHandler):
             if self.in_blacklist(entry_username):
                 print("{} is in blacklist, skip ...")
                 # follower_entry = self.e.follower_entry_n(follower_entry_n)
+                if self.e.is_followers_end(follower_entry_n):
+                    print("End of list encountered, returning. A")
+                    return followed_count
                 follower_entry_n += 1
                 continue
 
@@ -270,6 +282,9 @@ class InstagramHandler(FollowerApplicationHandler):
                     self.session.add(new_unfollowed)
                     self.session.delete(already_following)
                     self.session.commit()
+                    if self.e.is_followers_end(follower_entry_n):
+                        print("End of list encountered, returning. A")
+                        return followed_count
                     follower_entry_n += 1
                     continue
 
@@ -308,6 +323,11 @@ class InstagramHandler(FollowerApplicationHandler):
                 print("Follow added to database.")
 
                 followed_count += 1
+
+                if self.e.is_followers_end(follower_entry_n):
+                    print("End of list encountered, returning. A")
+                    return followed_count
+                
                 follower_entry_n += 1
                 # sleep(5)
                 self.sleepmsrange(self.action_timeout)
@@ -763,6 +783,7 @@ class InstagramHandler(FollowerApplicationHandler):
 class InstagramHandlerWebElements(ApplicationWebElements):
     # follower_xpath_prefix = '//div[@role="dialog"]/div/div[2]/ul/div'
     _followers_lighbox_prefix = '//div[@role="presentation"]/div[@role="dialog"]'
+    implicit_default_wait = 60
 
     def followers_lightbox(self):
         return self.driver.find_element(By.XPATH, self._followers_lighbox_prefix)

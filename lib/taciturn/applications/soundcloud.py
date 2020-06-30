@@ -68,6 +68,7 @@ class SoundcloudHandler(FollowerApplicationHandler):
         self.follow_back_hiatus = self.config['app:soundcloud']['follow_back_hiatus']
         self.unfollow_hiatus = self.config['app:soundcloud']['unfollow_hiatus']
         self.action_timeout = self.config['app:soundcloud']['action_timeout']
+        self.mutual_expire_hiatus = self.config['app:soundcloud']['mutual_expire_hiatus']
 
         if self.config['selenium_webdriver'].endswith('_headless'):
             self.headless_mode = True
@@ -95,6 +96,16 @@ class SoundcloudHandler(FollowerApplicationHandler):
 
         header_profile_menu.click()
         self.e.header_profile_menu_profile_link().click()
+
+    def goto_following_page(self):
+        self.goto_user_page()
+        followers_link = self.e.profile_following_link()
+        followers_link.click()
+
+    def goto_followers_page(self):
+        self.goto_user_page()
+        followers_link = self.e.profile_followers_link()
+        followers_link.click()
 
     def login(self):
         if self.headless_mode:
@@ -208,75 +219,6 @@ class SoundcloudHandler(FollowerApplicationHandler):
         print("Logged in!")
 
         self.e.close_if_pro_lightbox()
-
-
-    def old_login(self):
-        self.goto_homepage()
-
-        print("Making screenshot ...")
-        self.driver.save_screenshot(os.path.join(self.screenshots_dir, 'soundcloud_first_page.png'))
-
-        sign_in_button = self.driver.find_element(
-            By.CSS_SELECTOR, r'button.frontHero__loginButton:first-child')
-        sign_in_button.click()
-
-        # switch to login iframe:
-        login_iframe = self.driver.find_element(By.XPATH, '//iframe[@class="webAuthContainer__iframe"]')
-        self.driver.switch_to.frame(login_iframe)
-
-        user_google_button = self.driver.find_element(
-            By.CSS_SELECTOR, r'button.google-plus-signin')
-        user_google_button.click()
-
-        self.driver.save_screenshot(os.path.join(self.screenshots_dir, 'google_login_click.png'))
-
-        # switch to google login popup:
-
-        main_window = self.driver.current_window_handle
-        google_login_popup = None
-        for wh in self.driver.window_handles:
-            if wh != main_window:
-                google_login_popup = wh
-
-        self.driver.switch_to.window(google_login_popup)
-
-        # dump google login to html:
-        with open(self.screenshots_dir+'/google_login.html', 'w') as gh:
-            gh.write(self.driver.page_source)
-
-        self.driver.save_screenshot(os.path.join(self.screenshots_dir, 'google_login_pre_identifier.png'))
-
-        # enter google username:
-        google_name_field = self.driver.find_element(By.XPATH, '//input[@id="identifierId"]')
-        google_name_field.send_keys(self.app_account.name)
-
-        # click 'Next' button:
-        # //*[@id="identifierNext"]/div/span/span[text() = "Next"]
-        google_next_button = self.driver.find_element(By.XPATH, '//*[@id="identifierNext"]/div/span/span[text()="Next"]')
-        google_next_button.click()
-
-        # enter password:
-        # //input[@name="password"]
-        google_password_field = self.driver.find_element(By.XPATH, '//input[@name="password"]')
-        google_password_field.send_keys(self.app_account.password)
-
-        # click the 'Next' button:
-        # //*[@id="passwordNext"]/div/span/span[text() = "Next"]
-        google_next_button = self.driver.find_element(By.XPATH, '//*[@id="passwordNext"]/div/span/span[text()="Next"]')
-        google_next_button.click()
-
-        # switch back to the main window:
-        self.driver.switch_to.window(main_window)
-
-        # use the 'Messages' element to verify login!
-        # //*[@id="app"]/header/div/div[3]/div[2]/a[3]/div/span[contains(.,"Messages")]
-        self.driver.find_element(
-            By.XPATH, r'//*[@id="app"]/header/div/div[3]/div[2]/a[3]/div/span[contains(.,"Messages")]')
-
-        print("Logged in!")
-
-        self.e.close_if_pro_lightbox()
-        # self.goto_user_page()
 
     def start_following(self, target_account, quota=None, unfollow_hiatus=None):
         self.driver.get(self.application_url+'/'+target_account+'/followers')
@@ -412,14 +354,105 @@ class SoundcloudHandler(FollowerApplicationHandler):
 
         return followed_count
 
-    def start_unfollowing(self, quota=None, follow_back_hiatus=None):
-        pass
+    def start_unfollowing(self, quota=None, follow_back_hiatus=None, mutual_expire_hiatus=None):
+        # print(" GET {}/{}/following".format(self.application_url, self.app_username))
+        self.goto_following_page()
+
+        following_entry = self.e.first_following_entry()
+        print("following_entry =", following_entry)
+        unfollow_count = 0
+        follow_back_hiatus = follow_back_hiatus or self.follow_back_hiatus
+        mutual_expire_hiatus = mutual_expire_hiatus or self.mutual_expire_hiatus
+        tab_overlap_y = self.e.followers_tab_overlap()
+
+        while quota is None or quota > unfollow_count:
+            self.scrollto_element(following_entry, offset=tab_overlap_y)
+
+            following_username = self.e.follower_username(following_entry)
+            print("Scanning {} ...".format(following_username))
+
+            # if in whitelist, skip ...
+            if self.in_whitelist(following_username):
+                print("'{}' in whitelist, skipping ...".format(following_username))
+                if self.e.is_followers_end(following_entry):
+                    print("List end encountered, stopping.")
+                    return unfollow_count
+                following_entry = self.e.next_follower_entry(following_entry)
+                continue
+
+            # get following entry from db ...
+            following_db = self.session.query(Following) \
+                .filter(and_(Following.user_id == self.app_account.user_id,
+                             Following.application_id == self.app_account.application_id,
+                             Following.name == following_username
+                             )).one_or_none()
+
+            # if entry not in db, add with timestamp and skip ...
+            if following_db is None:
+                print("No entry for '{}', creating.".format(following_username))
+                new_following = Following(name=following_username,
+                                          established=datetime.now(),
+                                          application_id=self.app_account.application_id,
+                                          user_id=self.app_account.user_id)
+                self.session.add(new_following)
+                self.session.commit()
+                print("Skipping newly scanned follower ...")
+                if self.e.is_followers_end(following_entry):
+                    print("List end encountered, stopping.")
+                    return unfollow_count
+                following_entry = self.e.next_follower_entry(following_entry)
+                continue
+            # follow in db, check and delete, if now > then + hiatus time ...
+            else:
+                follows_me = self.e.follower_follows_me(following_entry)
+                if (datetime.now() > following_db.established + follow_back_hiatus) or \
+                        (follows_me and datetime.now() > following_db.established + mutual_expire_hiatus):
+                    if follows_me:
+                        print("Mutual follow expired, unfollowing ...")
+                    else:
+                        print("Follow expired, unfollowing ...")
+                    list_following_button = self.e.follower_button(following_entry)
+                    list_following_button_text = list_following_button.text
+                    if list_following_button_text not in BUTTON_TEXT_FOLLOWING:
+                        raise AppUnexpectedStateException(
+                            "Unfollow button for '{}' says '{}'?".format(following_username,
+                                                                         list_following_button_text))
+                    list_following_button.click()
+                    lb_following_button = self.e.unfollow_lightbox_button()
+                    lb_following_button.click()
+
+                    # we need to wait and make sure button goes back to unfollowed state ...
+                    WebDriverWait(following_entry, 60).until(
+                        lambda e: self.e.follower_button(e).text in BUTTON_TEXT_NOT_FOLLOWING)
+
+                    # create a new unfollow entry:
+                    new_unfollowed = Unfollowed(name=following_db.name,
+                                                established=datetime.now(),
+                                                user_id=following_db.user_id,
+                                                application_id=following_db.application_id)
+
+                    self.session.add(new_unfollowed)
+                    self.session.delete(following_db)
+
+                    self.session.commit()
+                    unfollow_count += 1
+
+                    self.sleepmsrange(self.action_timeout)
+                else:
+                    if follows_me:
+                        time_remaining = (following_db.established + mutual_expire_hiatus) - datetime.now()
+                        print("Mutual expire hiatus not reached!  {} left!".format(time_remaining))
+                    else:
+                        time_remaining = (following_db.established + follow_back_hiatus) - datetime.now()
+                        print("Follow hiatus not reached!  {} left!".format(time_remaining))
+
+            if self.e.is_followers_end(following_entry):
+                print("List end encountered, stopping.")
+                return unfollow_count
+            following_entry = self.e.next_follower_entry(following_entry)
 
     def update_following(self):
-        self.goto_user_page()
-
-        followers_link = self.e.profile_following_link()
-        followers_link.click()
+        self.goto_following_page()
 
         header_menu_offset = self.e.followers_header_overlap()
         # get the first follower entry:
@@ -459,10 +492,7 @@ class SoundcloudHandler(FollowerApplicationHandler):
             sleep(0.4)
 
     def update_followers(self):
-        self.goto_user_page()
-
-        followers_link = self.e.profile_followers_link()
-        followers_link.click()
+        self.goto_followers_page()
 
         header_menu_offset = self.e.followers_header_overlap()
         # get the first follower entry:

@@ -16,7 +16,7 @@
 
 
 from selenium.webdriver.common.by import By
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from selenium.common.exceptions import TimeoutException, NoSuchElementException, StaleElementReferenceException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
@@ -76,7 +76,23 @@ class TwitterHandler(FollowerApplicationHandler):
         self.driver.get(self.application_url + '/home')
 
     def goto_user_page(self):
-        self.driver.get("{}/{}/".format(self.application_url, self.app_username))
+        self.driver.get(self.application_url + '/home')
+        profile_link = self.e.home_profile_link().get_attribute('href')
+        self.driver.get(profile_link)
+
+    def goto_following_page(self):
+        self.driver.get(self.application_url + '/home')
+        profile_link = self.e.home_profile_link().get_attribute('href')
+        self.driver.get(profile_link)
+        self.driver.find_element(By.XPATH,
+                                 '//*[@id="react-root"]//div[1]/a/span[2]/span[text()="Following"]').click()
+
+    def goto_followers_page(self):
+        self.driver.get(self.application_url + '/home')
+        profile_link = self.e.home_profile_link().get_attribute('href')
+        self.driver.get(profile_link)
+        self.driver.find_element(By.XPATH,
+                                 '//*[@id="react-root"]//div[2]/a/span[2]/span[text()="Followers"]').click()
 
     def login(self):
         # enter username and password:
@@ -85,24 +101,18 @@ class TwitterHandler(FollowerApplicationHandler):
         self.e.login_username_input().send_keys(self.app_username)
         self.e.login_password_input().send_keys(self.app_password)
         self.e.login_button().click()
-
-        profile_link = self.e.home_profile_link().get_attribute('href').lower()
-        profile_link_expected = self.application_url + '/' + self.app_username.lower()
-        print("login: profile_link =", profile_link)
-        print("login: profile_link_expected =", profile_link_expected)
-        if profile_link != profile_link_expected:
-            raise AppLoginException("Couldn't verify login profile link, href '{}' doesn't match '{}'"
-                                    .format(profile_link, profile_link_expected))
-
+        # use this to verify login ...
+        self.e.home_profile_link()
+        
         print("Logged in to twitter ok!")
 
     def start_following(self, target_account, quota=None, unfollow_hiatus=None):
         print("start_following: starting up ...")
         # for a bit of misdirection ;)
-        self.goto_homepage()
-        sleep(2)
-        self.goto_user_page()
-        sleep(2)
+        # self.goto_homepage()
+        # sleep(2)
+        # self.goto_user_page()
+        # sleep(2)
         self.driver.get("{}/{}".format(self.application_url, target_account))
         sleep(2)
 
@@ -249,7 +259,6 @@ class TwitterHandler(FollowerApplicationHandler):
                 print("Follow added to database.")
 
                 followed_count += 1
-                self.sleepmsrange(self.action_timeout)
 
             elif entry_button_text in BUTTON_TEXT_FOLLOWING:
                 # do nothing!
@@ -261,6 +270,9 @@ class TwitterHandler(FollowerApplicationHandler):
             if self.e.is_followers_end(follower_entry):
                 print("List end encountered, stopping.")
                 return followed_count
+
+            self.sleepmsrange(self.action_timeout)
+
             follower_entry = self.e.next_follower_entry(follower_entry)
 
             # give the list scrolling a chance to catch up:
@@ -270,7 +282,7 @@ class TwitterHandler(FollowerApplicationHandler):
 
     def update_followers(self):
         # print(" GET {}/{}/following".format(self.application_url, self.app_username))
-        self.driver.get("{}/{}/followers".format(self.application_url, self.app_username))
+        self.goto_followers_page()
 
         follower_entry = self.e.first_follower_entry()
         print("follower_entry =", follower_entry)
@@ -311,7 +323,7 @@ class TwitterHandler(FollowerApplicationHandler):
 
     def update_following(self):
         # print(" GET {}/{}/following".format(self.application_url, self.app_username))
-        self.driver.get("{}/{}/following".format(self.application_url, self.app_username))
+        self.goto_following_page()
 
         following_entry = self.e.first_following_entry()
         print("following_entry =", following_entry)
@@ -354,7 +366,7 @@ class TwitterHandler(FollowerApplicationHandler):
 
     def start_unfollowing(self, quota=None, follow_back_hiatus=None, mutual_expire_hiatus=None):
         # print(" GET {}/{}/following".format(self.application_url, self.app_username))
-        self.driver.get("{}/{}/following".format(self.application_url, self.app_username))
+        self.goto_following_page()
 
         following_entry = self.e.first_following_entry()
         print("following_entry =", following_entry)
@@ -364,12 +376,6 @@ class TwitterHandler(FollowerApplicationHandler):
         tab_overlap_y = self.e.followers_tab_overlap()
 
         while quota is None or quota > unfollow_count:
-            # check to see if this looks like the end:
-            if self.e.is_followers_end(following_entry):
-                print("List end encountered, stopping.")
-                return unfollow_count
-
-            # check to see if entry is in the database:
             self.scrollto_element(following_entry, offset=tab_overlap_y)
 
             following_username = self.e.follower_username(following_entry).text
@@ -378,6 +384,9 @@ class TwitterHandler(FollowerApplicationHandler):
             # if in whitelist, skip ...
             if self.in_whitelist(following_username):
                 print("'{}' in whitelist, skipping ...".format(following_username))
+                if self.e.is_followers_end(following_entry):
+                    print("List end encountered, stopping.")
+                    return unfollow_count
                 following_entry = self.e.next_follower_entry(following_entry)
                 continue
 
@@ -398,6 +407,9 @@ class TwitterHandler(FollowerApplicationHandler):
                 self.session.add(new_following)
                 self.session.commit()
                 print("Skipping newly scanned follower ...")
+                if self.e.is_followers_end(following_entry):
+                    print("List end encountered, stopping.")
+                    return unfollow_count
                 following_entry = self.e.next_follower_entry(following_entry)
                 continue
             # follow in db, check and delete, if now > then + hiatus time ...
@@ -443,13 +455,11 @@ class TwitterHandler(FollowerApplicationHandler):
                     else:
                         time_remaining = (following_db.established + follow_back_hiatus) - datetime.now()
                         print("Follow hiatus not reached!  {} left!".format(time_remaining))
-            try:
-                following_entry = self.e.next_follower_entry(following_entry)
-            except NoSuchElementException:
-                break
 
-        return unfollow_count
-
+            if self.e.is_followers_end(following_entry):
+                print("List end encountered, stopping.")
+                return unfollow_count
+            following_entry = self.e.next_follower_entry(following_entry)
 
 class TwitterHandlerWebElements(ApplicationWebElements):
     # //*[@id="react-root"]/div/div/div[2]/main/div/div/div/div[1]/div/div[2]/section/div/div/div/div[N]
@@ -460,14 +470,38 @@ class TwitterHandlerWebElements(ApplicationWebElements):
     _follower_first_follower_entry = '//section[starts-with(@aria-labelledby, "accessible-list-")]/div[@aria-label="Timeline: Followers"]/div/div/div[1]'
     _following_first_follwing_entry = '//section[starts-with(@aria-labelledby, "accessible-list-")]/div[@aria-label="Timeline: Following"]/div/div/div[1]'
 
+    implicit_default_wait = 60
+
     # def _follower_entry_xpath_prefix(self, n=1):
     #   return self.follower_xpath_prefix + '/div[{}]'.format(n)
 
-    def first_following_entry(self):
-        return self.driver.find_element(By.XPATH, self._following_first_follwing_entry)
+    def first_following_entry(self, retries=10):
+        for try_n in range(1, retries+1):
+            try:
+                self.driver.implicitly_wait(0)
+                return self.driver.find_element(By.XPATH, self._following_first_follwing_entry)
+            except (StaleElementReferenceException, NoSuchElementException) as e:
+                print('first_following_entry: caught exception:', e)
+                if try_n == retries:
+                    raise e
+                else:
+                    print("first_following_entry, caught exception try {} of {}: {}".format(try_n, retries, e))
+            finally:
+                self.driver.implicitly_wait(self.implicit_default_wait)
 
-    def first_follower_entry(self):
-        return self.driver.find_element(By.XPATH, self._follower_first_follower_entry)
+    def first_follower_entry(self, retries=10):
+        for try_n in range(1, retries+1):
+            try:
+                self.driver.implicitly_wait(0)
+                return self.driver.find_element(By.XPATH, self._follower_first_follower_entry)
+            except (StaleElementReferenceException, NoSuchElementException) as e:
+                print('first_follower_entry: caught exception:', e)
+                if try_n == retries:
+                    raise e
+                else:
+                    print("first_follower_entry, caught exception try {} of {}: {}".format(try_n, retries, e))
+            finally:
+                self.driver.implicitly_wait(self.implicit_default_wait)
 
     def next_follower_entry(self, follower_entry):
         selector = './following-sibling::div[1]'
@@ -576,15 +610,23 @@ class TwitterHandlerWebElements(ApplicationWebElements):
             '(//nav[@role="navigation"]//a[@role="tab" and @aria-selected="true"]'
             '/div/span[text() = "Followers"])[2]')
 
-    def followers_tab_overlap(self):
+    def followers_tab_overlap(self, retries=10):
         # get the y dimension of the overlapping tab, because it will obscure clicks!
         # //*[@id="react-root"]/div/div/div[2]/main/div/div/div/div[N]/div/div
         # //div[@data-testid="primaryColumn"]/div/div
-        tab_element = self.driver.find_element(
-            By.XPATH,
-            '(//div[@data-testid="primaryColumn"]/div/div)[1]'
-        )
-        return tab_element.size['height']
+        for try_n in range(1, retries+1):
+            try:
+                tab_element = self.driver.find_element(
+                    By.XPATH,
+                    '(//div[@data-testid="primaryColumn"]/div/div)[1]'
+                )
+                return tab_element.size['height']
+            except (StaleElementReferenceException, NoSuchElementException) as e:
+                print('next_follower_entry: caught exception:', e)
+                if try_n == retries:
+                    raise e
+                else:
+                    print("next_follower_entry, caught exception try {} of {}: {}".format(try_n, retries, e))
 
     def follow_click_verify_cb(self, follower_entry):
         def follow_click_verify(x):

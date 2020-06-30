@@ -25,6 +25,7 @@ from taciturn.job import TaciturnJob
 
 from taciturn.applications.soundcloud import SoundcloudHandler
 
+from datetime import timedelta
 from time import sleep, time
 import traceback
 import sys
@@ -52,44 +53,6 @@ class SoundcloudFollowJob(TaciturnJob):
 
         self.options = options
 
-    def old_run(self):
-        # this script will handle following a total of X followers in Y rounds per day
-
-        # get user from database:
-        soundcloud_account = self.get_account('soundcloud')
-        soundcloud_handler = SoundcloudHandler(self.options, self.session, soundcloud_account)
-
-        # figure out what to do for the next 24 hours:
-
-        daily_max_follows = self.options.max or self.config['app:soundcloud']['daily_max_follows']
-        round_max_follows = self.options.quota or self.config['app:soundcloud']['round_max_follows']
-
-        rounds_per_day = daily_max_follows // round_max_follows
-        print("rounds_per_day:", rounds_per_day)
-        round_timeout = (24*60*60) / rounds_per_day
-
-        soundcloud_handler.login()
-
-        for round_n in range(1, rounds_per_day+1):
-            print("soundcloud_follow: beginning round {} for {} at soundcloud ...".format(round_n, self.username))
-
-            followed_count = soundcloud_handler.start_following(self.target_account, quota=round_max_follows)
-
-            if followed_count < round_max_follows:
-                print("soundcloud_follow: couldn't fulfill quota:"
-                      " expected {} follows, actual {}.".format(round_max_follows, followed_count))
-                if self.stop_no_quota:
-                    print("Quota unfulfilled, stopping following.")
-                    break
-            elif followed_count == round_max_follows and round_n < rounds_per_day:
-                print("Followed {} users, round complete."
-                      "  Sleeping for {} hours".format(followed_count, round_timeout / (60*60)))
-
-            sleep(round_timeout)
-
-        print("Job complete.")
-        soundcloud_handler.quit()
-
     def run(self):
         # this script will handle following a total of X followers in Y rounds per day
 
@@ -112,14 +75,15 @@ class SoundcloudFollowJob(TaciturnJob):
 
         soundcloud_handler.login()
 
+        total_job_time = 0
         followed_total = 0
         failed_rounds = 0
 
         for round_n in range(1, rounds_per_day+1):
             print("soundcloud_follow: beginning round {} for {} at soundcloud ...".format(round_n, self.username))
 
-            followed_count = 0
             start_epoch = time()
+            followed_count = 0
 
             # for retry_n in range(1, round_retries+1):
             # try:
@@ -138,6 +102,7 @@ class SoundcloudFollowJob(TaciturnJob):
             #     failed_rounds += 1
 
             job_time = time() - start_epoch
+            sleep_time = round_timeout - job_time
 
             if followed_count < round_max_follows:
                 print("twitter_follow: couldn't fulfill quota:"
@@ -147,16 +112,17 @@ class SoundcloudFollowJob(TaciturnJob):
                     break
             elif followed_count == round_max_follows and round_n < rounds_per_day:
                 print("Followed {} users, round complete."
-                      "  Sleeping for {} hours".format(followed_count, (round_timeout - job_time) / (60*60)))
-
-            if round_n >= rounds_per_day:
-                break
+                      "  Sleeping for {} hours".format(followed_count, timedelta(seconds=sleep_time)))
 
             followed_total += followed_count
-            sleep(round_timeout - job_time)
+            total_job_time += job_time
+            if round_n >= rounds_per_day:
+                break
+            sleep(sleep_time)
 
         print("Ran {} rounds, following {} accounts, {} rounds failed"
                 .format(rounds_per_day, followed_total, failed_rounds))
+        print("Job total time:", timedelta(seconds=total_job_time))
 
         print("Job complete.")
         soundcloud_handler.quit()

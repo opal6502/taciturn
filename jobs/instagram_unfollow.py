@@ -25,7 +25,8 @@ from taciturn.job import TaciturnJob
 
 from taciturn.applications.instagram import InstagramHandler
 
-from time import sleep
+from datetime import timedelta
+from time import sleep, time
 import traceback
 
 
@@ -65,12 +66,14 @@ class InstagramUnfollowJob(TaciturnJob):
 
         instagram_handler.login()
 
+        total_job_time = 0
         unfollowed_total = 0
         failed_rounds = 0
 
         for round_n in range(1, rounds_per_day+1):
             print("instagram_unfollow: beginning round {} for {} at twitter ...".format(round_n, self.username))
 
+            start_epoch = time()
             unfollowed_count = 0
 
             for retry_n in range(1, round_retries+1):
@@ -89,6 +92,9 @@ class InstagramUnfollowJob(TaciturnJob):
                 print("instagram_unfollow: round failed after {} tries!".format(retry_n))
                 failed_rounds += 1
 
+            job_time = time() - start_epoch
+            sleep_time = round_timeout - job_time
+
             if unfollowed_count < round_max_unfollows:
                 print("instagram_unfollow: couldn't fulfill quota:"
                       " expected {} unfollows, actual {}.".format(round_max_unfollows, unfollowed_count))
@@ -97,13 +103,17 @@ class InstagramUnfollowJob(TaciturnJob):
                     break
             elif unfollowed_count == round_max_unfollows and round_n < rounds_per_day:
                 print("Unfollowed {} users, round complete."
-                      "  Sleeping for {} hours".format(unfollowed_count, round_timeout / (60*60)))
+                      "  Sleeping for {} hours".format(unfollowed_count, timedelta(seconds=sleep_time)))
 
+            total_job_time += job_time
             unfollowed_total += unfollowed_count
-            sleep(round_timeout)
+            if round_n >= rounds_per_day:
+                break
+            sleep(sleep_time)
 
         print("Ran {} rounds, unfollowing {} accounts, {} rounds failed"
               .format(round_n, unfollowed_total, failed_rounds))
+        print("Job total time:", timedelta(seconds=total_job_time))
 
         print("Job complete.")
         instagram_handler.quit()

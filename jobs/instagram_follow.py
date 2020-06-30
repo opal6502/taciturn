@@ -72,14 +72,15 @@ class InstagramFollowJob(TaciturnJob):
 
         instagram_handler.login()
 
+        total_job_time = 0
         followed_total = 0
         failed_rounds = 0
 
         for round_n in range(1, rounds_per_day+1):
             print("instagram_follow: beginning round {} for {} at instagram ...".format(round_n, self.username))
 
-            unfollowed_count = 0
             start_epoch = time()
+            unfollowed_count = 0
 
             followed_count = instagram_handler.start_following(self.target_account, quota=round_max_follows)
             for retry_n in range(1, round_retries+1):
@@ -100,6 +101,7 @@ class InstagramFollowJob(TaciturnJob):
 
             job_time = time() - start_epoch
             sleep_time = round_timeout - job_time
+
             if sleep_time < 0:
                 print("instagram_follow: warning: job took {} longer than expected!"\
                       .format(timedelta(seconds=math.fabs(sleep_time))))
@@ -116,11 +118,15 @@ class InstagramFollowJob(TaciturnJob):
                 print("Followed {} users, round complete."
                       "  Sleeping for {}".format(followed_count, timedelta(seconds=sleep_time)))
 
+            total_job_time += job_time
             followed_total += followed_count
+            if round_n >= rounds_per_day:
+                break
             sleep(sleep_time)
 
         print("Ran {} rounds, unfollowing {} accounts, {} rounds failed"
                 .format(rounds_per_day, followed_total, failed_rounds))
+        print("Job total time:", timedelta(seconds=total_job_time))
 
         print("Job complete.")
         instagram_handler.quit()

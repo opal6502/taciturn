@@ -25,6 +25,7 @@ from taciturn.job import TaciturnJob
 
 from taciturn.applications.twitter import TwitterHandler
 
+from datetime import timedelta
 from time import sleep, time
 import traceback
 import sys
@@ -71,6 +72,7 @@ class TwitterFollowJob(TaciturnJob):
 
         twitter_handler.login()
 
+        total_job_time = 0
         followed_total = 0
         failed_rounds = 0
 
@@ -97,6 +99,7 @@ class TwitterFollowJob(TaciturnJob):
                 failed_rounds += 1
 
             job_time = time() - start_epoch
+            sleep_time = round_timeout - job_time
 
             if followed_count < round_max_follows:
                 print("twitter_follow: couldn't fulfill quota:"
@@ -106,15 +109,20 @@ class TwitterFollowJob(TaciturnJob):
                     break
             elif followed_count == round_max_follows and round_n < rounds_per_day:
                 print("Followed {} users, round complete."
-                      "  Sleeping for {} hours".format(followed_count, (round_timeout - job_time) / (60*60)))
+                      "  Sleeping for {} hours".format(followed_count, timedelta(seconds=sleep_time)))
 
+            total_job_time += job_time
             followed_total += followed_count
-            sleep(round_timeout - job_time)
+            if round_n >= rounds_per_day:
+                break
+            sleep(sleep_time)
 
         print("Ran {} rounds, following {} accounts, {} rounds failed"
                 .format(rounds_per_day, followed_total, failed_rounds))
+        print("Job total time:", timedelta(seconds=total_job_time))
 
         print("Job complete.")
         twitter_handler.quit()
+
 
 job = TwitterFollowJob()
