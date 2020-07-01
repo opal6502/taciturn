@@ -134,7 +134,7 @@ class TwitterHandler(FollowerApplicationHandler):
         while quota is None or followed_count < quota:
 
             if self.e.is_followers_end(follower_entry):
-                print("List end encountered, stopping.")
+                print("List end encountered, stopping. (top)")
                 return followed_count
 
             # extract entry fields, continue'ing asap to avoid unnecessary work ...
@@ -207,6 +207,9 @@ class TwitterHandler(FollowerApplicationHandler):
                     self.session.delete(already_following)
                     self.session.commit()
 
+                    if self.e.is_followers_end(follower_entry):
+                        print("List end encountered, stopping.")
+                        return followed_count
                     follower_entry = self.e.next_follower_entry(follower_entry)
                     continue
 
@@ -236,6 +239,9 @@ class TwitterHandler(FollowerApplicationHandler):
                     follower_entry = self.e.next_follower_entry(follower_entry)
                     print("Blocked by user.")
                     WebDriverWait(self.driver, timeout=60).until(self.e.blocked_notice_gone_cb())
+                    if self.e.is_followers_end(follower_entry):
+                        print("List end encountered, stopping.")
+                        return followed_count
                     continue
 
                 if self.e.is_follower_limit_notify_present():
@@ -267,16 +273,8 @@ class TwitterHandler(FollowerApplicationHandler):
                 raise AppUnexpectedStateException(
                     "Entry button for '{}' says '{}'?".format(entry_username, entry_button.text))
 
-            if self.e.is_followers_end(follower_entry):
-                print("List end encountered, stopping.")
-                return followed_count
-
             self.sleepmsrange(self.action_timeout)
-
             follower_entry = self.e.next_follower_entry(follower_entry)
-
-            # give the list scrolling a chance to catch up:
-            # self.sleepmsrange(self.action_timeout)
 
         return followed_count
 
@@ -289,6 +287,11 @@ class TwitterHandler(FollowerApplicationHandler):
         entries_added = 0
 
         while True:
+            # check to see if this looks like the end:
+            if self.e.is_followers_end(follower_entry):
+                print("List end encountered, stopping.")
+                return entries_added
+
             # check to see if entry is in the database:
             self.scrollto_element(follower_entry)
             follower_username = self.e.follower_username(follower_entry).text
@@ -310,11 +313,6 @@ class TwitterHandler(FollowerApplicationHandler):
                 self.session.commit()
                 entries_added += 1
 
-            # check to see if this looks like the end:
-            if self.e.is_followers_end(follower_entry):
-                print("List end encountered, stopping.")
-                return entries_added
-
             follower_entry = self.e.next_follower_entry(follower_entry)
             # try:
             #     follower_entry = self.e.next_follower_entry(follower_entry)
@@ -330,6 +328,10 @@ class TwitterHandler(FollowerApplicationHandler):
         entries_added = 0
 
         while True:
+            if self.e.is_followers_end(following_entry):
+                print("List end encountered, stopping.")
+                return entries_added
+
             # check to see if entry is in the database:
             self.scrollto_element(following_entry)
 
@@ -352,17 +354,7 @@ class TwitterHandler(FollowerApplicationHandler):
                 self.session.commit()
                 entries_added += 1
 
-            # check to see if this looks like the end:
-            if self.e.is_followers_end(following_entry):
-                print("List end encountered, stopping.")
-                return entries_added
-
             follower_entry = self.e.next_follower_entry(following_entry)
-
-            # try:
-            #     following_entry = self.e.next_follower_entry(following_entry)
-            # except NoSuchElementException:
-            #     break
 
     def start_unfollowing(self, quota=None, follow_back_hiatus=None, mutual_expire_hiatus=None):
         # print(" GET {}/{}/following".format(self.application_url, self.app_username))
@@ -376,6 +368,10 @@ class TwitterHandler(FollowerApplicationHandler):
         tab_overlap_y = self.e.followers_tab_overlap()
 
         while quota is None or quota > unfollow_count:
+            if self.e.is_followers_end(following_entry):
+                print("List end encountered, stopping. (top)")
+                return unfollow_count
+
             self.scrollto_element(following_entry, offset=tab_overlap_y)
 
             following_username = self.e.follower_username(following_entry).text
@@ -384,9 +380,6 @@ class TwitterHandler(FollowerApplicationHandler):
             # if in whitelist, skip ...
             if self.in_whitelist(following_username):
                 print("'{}' in whitelist, skipping ...".format(following_username))
-                if self.e.is_followers_end(following_entry):
-                    print("List end encountered, stopping.")
-                    return unfollow_count
                 following_entry = self.e.next_follower_entry(following_entry)
                 continue
 
@@ -407,9 +400,6 @@ class TwitterHandler(FollowerApplicationHandler):
                 self.session.add(new_following)
                 self.session.commit()
                 print("Skipping newly scanned follower ...")
-                if self.e.is_followers_end(following_entry):
-                    print("List end encountered, stopping.")
-                    return unfollow_count
                 following_entry = self.e.next_follower_entry(following_entry)
                 continue
             # follow in db, check and delete, if now > then + hiatus time ...
@@ -456,10 +446,10 @@ class TwitterHandler(FollowerApplicationHandler):
                         time_remaining = (following_db.established + follow_back_hiatus) - datetime.now()
                         print("Follow hiatus not reached!  {} left!".format(time_remaining))
 
-            if self.e.is_followers_end(following_entry):
-                print("List end encountered, stopping.")
-                return unfollow_count
             following_entry = self.e.next_follower_entry(following_entry)
+
+        return unfollow_count
+
 
 class TwitterHandlerWebElements(ApplicationWebElements):
     # //*[@id="react-root"]/div/div/div[2]/main/div/div/div/div[1]/div/div[2]/section/div/div/div/div[N]
@@ -525,13 +515,21 @@ class TwitterHandlerWebElements(ApplicationWebElements):
             By.XPATH, './div/div/div/div[1]/div/a/div[1]/div[2]/div/img')
 
     @staticmethod
-    def follower_username(follower_entry):
+    def follower_username(follower_entry, retries=10):
         # ./div/div/div/div[2]/div/div[1]/a/div/div[2]/div/span
         # Another path seen on twitter:
         # ./div/div/div/div[2]/div/div[1]/a/div/div/div[1]/span/span
-        return follower_entry.find_element(
-            By.XPATH, './div/div/div/div[2]/div/div[1]/a/div/div[2]/div/span[starts-with(text(), "@")] | '
-                      './div/div/div/div[2]/div/div[1]/a/div/div/div[1]/span/span[starts-with(text(), "@")]')
+        for try_n in range(1, retries+1):
+            try:
+                return follower_entry.find_element(
+                    By.XPATH, './div/div/div/div[2]/div/div[1]/a/div/div[2]/div/span[starts-with(text(), "@")] | '
+                              './div/div/div/div[2]/div/div[1]/a/div/div/div[1]/span/span[starts-with(text(), "@")]')
+            except (StaleElementReferenceException, NoSuchElementException) as e:
+                print('first_follower_entry: caught exception:', e)
+                if try_n == retries:
+                    raise e
+                else:
+                    print("first_follower_entry, caught exception try {} of {}: {}".format(try_n, retries, e))
 
     @staticmethod
     def follower_button(follower_entry):

@@ -39,6 +39,7 @@ default_config = {
 
     'default_config1': 'foo',
     'default_site_config1': 'foo_default',
+    'day_length': datetime.timedelta(hours=6),
 
     'orm_connect_args': {'timeout': 60},
 
@@ -46,9 +47,9 @@ default_config = {
     'selenium_webdriver': 'chrome_headless',
 
     'app:*': {
-        'daily_max_follows': 400,
+        'daily_max_follows': 200,
         'round_max_follows': 30,
-        'daily_max_unfollows': 400,
+        'daily_max_unfollows': 200,
         'round_max_unfollows': 30,
 
         # 5 seconds to 5 minutes:

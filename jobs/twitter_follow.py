@@ -64,11 +64,12 @@ class TwitterFollowJob(TaciturnJob):
 
         daily_max_follows = self.options.max or self.config['app:twitter']['daily_max_follows']
         round_max_follows = self.options.quota or self.config['app:twitter']['round_max_follows']
+        day_length = self.config['day_length']
         round_retries = 5
 
         rounds_per_day = daily_max_follows // round_max_follows
         print("rounds_per_day:", rounds_per_day)
-        round_timeout = (24*60*60) / rounds_per_day
+        round_timeout = day_length.total_seconds() / rounds_per_day
 
         twitter_handler.login()
 
