@@ -35,22 +35,20 @@ default_config = {
     'cookie_dir': os.path.join(taciturn_root, 'cookies'),
     'screenshots_dir': os.path.join(taciturn_root, 'screenshots'),
     'database_url': 'sqlite:///' + os.path.join(taciturn_root, 'db', 'taciturn.sqlite'),
+    'orm_connect_args': {'timeout': 60},
+
     'asset_root': os.path.join(taciturn_root, 'assets'),
 
-    'default_config1': 'foo',
-    'default_site_config1': 'foo_default',
     'day_length': datetime.timedelta(hours=6),
-
-    'orm_connect_args': {'timeout': 60},
 
     # selenium webdriver type:  'htmlunit', 'htmlunitjs', 'chrome', 'chrome_headless', 'firefox'
     'selenium_webdriver': 'chrome_headless',
 
     'app:*': {
         'daily_max_follows': 200,
-        'round_max_follows': 30,
-        'daily_max_unfollows': 200,
-        'round_max_unfollows': 30,
+        'round_max_follows': 10,
+        'daily_max_unfollows': 400,
+        'round_max_unfollows': 40,
 
         # 5 seconds to 5 minutes:
         'action_timeout': (1000*5, 1000*60*2),
@@ -64,7 +62,7 @@ default_config = {
     },
     'app:instagram': {
         'daily_max_follows': 300,
-        'round_max_follows': 30
+        'round_max_follows': 10
     },
     'app:youtube': {
         'video_watch_timeout': (2*60, 5*60),

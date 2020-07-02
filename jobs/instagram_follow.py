@@ -102,6 +102,8 @@ class InstagramFollowJob(TaciturnJob):
 
             job_time = time() - start_epoch
             sleep_time = round_timeout - job_time
+            if sleep_time < 0:
+                sleep_time = 0
 
             if sleep_time < 0:
                 print("instagram_follow: warning: job took {} longer than expected!"\

@@ -101,6 +101,8 @@ class TwitterFollowJob(TaciturnJob):
 
             job_time = time() - start_epoch
             sleep_time = round_timeout - job_time
+            if sleep_time < 0:
+                sleep_time = 0
 
             if followed_count < round_max_follows:
                 print("twitter_follow: couldn't fulfill quota:"

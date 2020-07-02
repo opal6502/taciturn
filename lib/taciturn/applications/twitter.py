@@ -367,6 +367,9 @@ class TwitterHandler(FollowerApplicationHandler):
         mutual_expire_hiatus = mutual_expire_hiatus or self.mutual_expire_hiatus
         tab_overlap_y = self.e.followers_tab_overlap()
 
+        print("start_unfollowing, mutual_expire_hiatus =", mutual_expire_hiatus)
+        print("start_unfollowing, follow_back_hiatus =", follow_back_hiatus)
+
         while quota is None or quota > unfollow_count:
             if self.e.is_followers_end(following_entry):
                 print("List end encountered, stopping. (top)")
@@ -405,46 +408,55 @@ class TwitterHandler(FollowerApplicationHandler):
             # follow in db, check and delete, if now > then + hiatus time ...
             else:
                 follows_me = self.e.follower_follows_me(following_entry)
-                if (datetime.now() > following_db.established + follow_back_hiatus) or \
-                        (follows_me and datetime.now() > following_db.established + mutual_expire_hiatus):
-                    if follows_me:
-                        print("Mutual follow expired, unfollowing ...")
-                    else:
-                        print("Follow expired, unfollowing ...")
-                    list_following_button = self.e.follower_button(following_entry)
-                    list_following_button_text = list_following_button.text
-                    if list_following_button_text not in BUTTON_TEXT_FOLLOWING:
-                        raise AppUnexpectedStateException(
-                            "Unfollow button for '{}' says '{}'?".format(following_username,
-                                                                         list_following_button_text))
-                    list_following_button.click()
-                    lb_following_button = self.e.unfollow_lightbox_button()
-                    lb_following_button.click()
 
-                    # we need to wait and make sure button goes back to unfollowed state ...
-                    WebDriverWait(following_entry, 60).until(
-                        lambda e: self.e.follower_button(e).text in BUTTON_TEXT_NOT_FOLLOWING)
+                follow_back_expired = datetime.now() > following_db.established + follow_back_hiatus
+                mutual_follow_expired = datetime.now() > following_db.established + mutual_expire_hiatus
 
-                    # create a new unfollow entry:
-                    new_unfollowed = Unfollowed(name=following_db.name,
-                                                established=datetime.now(),
-                                                user_id=following_db.user_id,
-                                                application_id=following_db.application_id)
+                if not mutual_follow_expired and follows_me:
+                    time_remaining = (following_db.established + mutual_expire_hiatus) - datetime.now()
+                    print("Mutual expire hiatus not reached!  {} left!".format(time_remaining))
+                    following_entry = self.e.next_follower_entry(following_entry)
+                    continue
+                elif not follow_back_expired:
+                    time_remaining = (following_db.established + follow_back_hiatus) - datetime.now()
+                    print("Follow hiatus not reached!  {} left!".format(time_remaining))
+                    following_entry = self.e.next_follower_entry(following_entry)
+                    continue
 
-                    self.session.add(new_unfollowed)
-                    self.session.delete(following_db)
-
-                    self.session.commit()
-                    unfollow_count += 1
-
-                    self.sleepmsrange(self.action_timeout)
+                if mutual_follow_expired and follows_me:
+                    print("Mutual follow expired, unfollowing ...")
+                elif follow_back_expired:
+                    print("Follow expired, unfollowing ...")
                 else:
-                    if follows_me:
-                        time_remaining = (following_db.established + mutual_expire_hiatus) - datetime.now()
-                        print("Mutual expire hiatus not reached!  {} left!".format(time_remaining))
-                    else:
-                        time_remaining = (following_db.established + follow_back_hiatus) - datetime.now()
-                        print("Follow hiatus not reached!  {} left!".format(time_remaining))
+                    AppUnexpectedStateException("Unfollow in unexpected state, please examine!")
+
+                list_following_button = self.e.follower_button(following_entry)
+                list_following_button_text = list_following_button.text
+                if list_following_button_text not in BUTTON_TEXT_FOLLOWING:
+                    raise AppUnexpectedStateException(
+                        "Unfollow button for '{}' says '{}'?".format(following_username,
+                                                                     list_following_button_text))
+                list_following_button.click()
+                lb_following_button = self.e.unfollow_lightbox_button()
+                lb_following_button.click()
+
+                # we need to wait and make sure button goes back to unfollowed state ...
+                WebDriverWait(following_entry, 60).until(
+                    lambda e: self.e.follower_button(e).text in BUTTON_TEXT_NOT_FOLLOWING)
+
+                # create a new unfollow entry:
+                new_unfollowed = Unfollowed(name=following_db.name,
+                                            established=datetime.now(),
+                                            user_id=following_db.user_id,
+                                            application_id=following_db.application_id)
+
+                self.session.add(new_unfollowed)
+                self.session.delete(following_db)
+
+                self.session.commit()
+                unfollow_count += 1
+
+                self.sleepmsrange(self.action_timeout)
 
             following_entry = self.e.next_follower_entry(following_entry)
 
