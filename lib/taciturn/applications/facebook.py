@@ -101,10 +101,10 @@ class FacebookHandler(BaseApplicationHandler):
         self.pagepost_esablish_link(page_path, post_link)
         create_post_input = self.e.page_post_input()
         print('pagepost_create: sending post body')
-        sleep(3)
+        # sleep(3)
         create_post_input.send_keys(post_body)
         print('pagepost_create: getting post submit button')
-        sleep(3)
+        # sleep(3)
         create_post_submit = self.e.page_post_submitbutton()
         create_post_submit.click()
 
@@ -124,9 +124,8 @@ class FacebookHandler(BaseApplicationHandler):
 
     def pagepost_esablish_link(self, page_path, link_url, retries=10):
         "puts the link in the create page input, makes sure the preview loads with image, then removes the link text."
-        self.goto_page(page_path)
-        admin_header_y = self.e.page_admin_overhang_bottom()
 
+        admin_header_y = self.e.page_admin_overhang_bottom()
         parsed_link = urllib.parse.urlparse(link_url)
 
         for try_n in range(1, retries+1):
@@ -140,39 +139,45 @@ class FacebookHandler(BaseApplicationHandler):
                 print("pagepost_esablish_link: sending link text ...")
                 create_post_input = self.e.page_post_input()
                 create_post_input.send_keys(link_url+' ')
-                # create_post_input.send_keys(Keys.SHIFT + Keys.ENTER)
 
-                print("pagepost_esablish_link: scanning for link preview image ...")
+                print("pagepost_esablish_link: scanning for link preview image ({}) ...".format(parsed_link.netloc))
                 preview_image = self.e.page_post_link_image(parsed_link.netloc)
                 if preview_image is not None:
                     print("Got preview image!")
+                    create_post_input.clear()
 
-                    create_post_input.send_keys(Keys.COMMAND + "A")
-                    create_post_input.send_keys(Keys.DELETE)
+                    # take a look at this ajaxy input field ...
+                    # create_post_input = self.e.page_post_input()
+                    with open('pagepost_esablish_link.html', 'w') as f:
+                        f.write(create_post_input.get_attribute('innerHTML'))
 
                     return True
-
-            except ( #UnexpectedAlertPresentException,
-                    StaleElementReferenceException,
-                    NoSuchElementException,
-                    TimeoutException) as e:
+            except (StaleElementReferenceException, NoSuchElementException) as e:
                 print('pagepost_esablish_link: caught exception:', e)
-                sleep(0.2)
+                # sleep(5)
                 if try_n == retries:
                     raise e
-                else:
-                    # try reloading the page and trying again ...
-                    print("pagepost_esablish_link, caught exception try {} of {}: {}".format(try_n, retries, e))
-                    self.goto_page(page_path)
-                    self.e.kill_alert()
+                print("pagepost_esablish_link, caught exception try {} of {}: {}".format(try_n, retries, e))
+                self.goto_page(page_path)
+                self.e.kill_alert()
 
 
 class FacebookHandlerWebElements(ApplicationWebElements):
     implicit_default_wait = 60
 
-    def page_create_post_button(self):
-        return self.driver.find_element(
-            By.XPATH, '//*[starts-with(@id,"mount")]//div[@aria-label="Create Post"]//span[text()="Create Post"]')
+    def page_create_post_button(self, retries=10):
+        for try_n in range(1, retries+1):
+            try:  # following-sibling::div
+                return self.driver.find_element(
+                    By.XPATH,
+                    '//*[starts-with(@id,"mount")]//div[@aria-label="Create Post"]//span[text()="Create Post"]')
+            except (StaleElementReferenceException, NoSuchElementException) as e:
+                print('page_create_post_button: caught exception:', e)
+                # sleep(5)
+                if try_n == retries:
+                    raise e
+                else:
+                    print("page_create_post_button, caught exception try {} of {}: {}".format(try_n, retries, e))
 
     def page_create_post_header(self):
         # might not use this, but here it is anyway ...
@@ -183,10 +188,13 @@ class FacebookHandlerWebElements(ApplicationWebElements):
         # //div[starts-with(text(),"Write something")]
         # //div[starts-with(text(),"Write something")]/../..//div[@role="textbox" and @contenteditable="true"]
         # //div[@role="textbox" and @contenteditable="true"]/div[@data-contents="true"]/div[@data-block="true"]/div/span/br[@data-text="true"]
+        # '(//div[@role="dialog"])[2]//div[@role="textbox" and @contenteditable="true"]'
         return self.driver.find_element(
-            By.XPATH, '//div[starts-with(text(),"Write something")]/../..'
-                      '//div[@role="textbox" and @contenteditable="true"]'
-                      '/div[@data-contents="true"]/div[@data-block="true"]/div/span/br[@data-text="true"]')
+            By.XPATH, '(//div[@role="dialog"])[2]//div[@role="textbox" and @contenteditable="true"]')
+        # return self.driver.find_element(
+        #     By.XPATH, '//div[starts-with(text(),"Write something")]/../..'
+        #               '//div[@role="textbox" and @contenteditable="true"]')
+        #               # '/div[@data-contents="true"]/div[@data-block="true"]/div/span/br[@data-text="true"]')
 
     def page_post_link_displaydomain(self):
         # displayed domain of link, like "foo.bar.com"
@@ -221,15 +229,13 @@ class FacebookHandlerWebElements(ApplicationWebElements):
                 print("page_post_link_image: img_element =", img_element)
                 return img_element
             except (StaleElementReferenceException, NoSuchElementException) as e:
-                print('page_post_link_image: caught exception:', e)
-                # sleep(5)
+                # print('page_post_link_image: caught exception:', e)
+                sleep(0.2)
                 if try_n == retries:
                     raise e
-                else:
-                    print("page_post_link_image, caught exception try {} of {}: {}".format(try_n, retries, e))
+                # else:
+                #    print("page_post_link_image, caught exception try {} of {}: {}".format(try_n, retries, e))
             finally:
-
-
                 self.driver.implicitly_wait(self.implicit_default_wait)
 
     def page_post_submitbutton(self):
