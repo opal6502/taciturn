@@ -207,9 +207,6 @@ class TwitterHandler(FollowerApplicationHandler):
                     self.session.delete(already_following)
                     self.session.commit()
 
-                    if self.e.is_followers_end(follower_entry):
-                        print("List end encountered, stopping.")
-                        return followed_count
                     follower_entry = self.e.next_follower_entry(follower_entry)
                     continue
 
@@ -239,9 +236,6 @@ class TwitterHandler(FollowerApplicationHandler):
                     follower_entry = self.e.next_follower_entry(follower_entry)
                     print("Blocked by user.")
                     WebDriverWait(self.driver, timeout=60).until(self.e.blocked_notice_gone_cb())
-                    if self.e.is_followers_end(follower_entry):
-                        print("List end encountered, stopping.")
-                        return followed_count
                     continue
 
                 if self.e.is_follower_limit_notify_present():
@@ -738,19 +732,25 @@ class TwitterHandlerWebElements(ApplicationWebElements):
         finally:
             self.driver.implicitly_wait(self.implicit_default_wait)
 
-    def is_followers_end(self, follower_entry):
-        try:
-            self.driver.implicitly_wait(0)
-            e = follower_entry.find_element(
-                By.XPATH,
-                './div/div[not(node())]'
-            ).text
-            return True
-        except NoSuchElementException:
-            # print("bottom_notify_popover_text: NoSuchElementException")
-            return False
-        finally:
-            self.driver.implicitly_wait(self.implicit_default_wait)
+    def is_followers_end(self, follower_entry, retries=10):
+        for try_n in range(1, retries+1):
+            try:
+                self.driver.implicitly_wait(0)
+                el = follower_entry.find_element(
+                    By.XPATH,
+                    './div/div[not(node())]'
+                ).text
+                print("is_followers_end: True")
+                return True
+            except (NoSuchElementException, StaleElementReferenceException, TimeoutException) as e:
+                # print('is_followers_end: caught exception:', e)
+                if try_n == retries:
+                    print("is_followers_end: False")
+                    return False
+            finally:
+                self.driver.implicitly_wait(self.implicit_default_wait)
+        print("is_followers_end: False (out)")
+        return False
 
     # def verify_unfollow_lightbox(self):
     #     # //*[@id="react-root"]/div/div/div[1]/div[2]/div/div/div/div[2]/div[2]/div[1]/span

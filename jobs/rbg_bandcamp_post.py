@@ -25,7 +25,7 @@ from selenium.common.exceptions import (
 
 from taciturn.job import TaciturnJob
 
-from taciturn.applications.bandcamp import BandcampHandler
+# from taciturn.applications.bandcamp import BandcampHandler
 from taciturn.applications.facebook import FacebookHandler
 from taciturn.applications.instagram import InstagramHandler
 from taciturn.applications.twitter import TwitterHandler
@@ -44,6 +44,9 @@ class RootBeerGuyJob(TaciturnJob):
         self.accounts = dict()
         self.username = options.user[0]
 
+        if self.username != 'rbg':
+            raise RuntimeError("This job is for user 'rbg' only!")
+
         # pre-load accounts for all apps this job uses:
         self.load_accounts()
 
@@ -52,7 +55,23 @@ class RootBeerGuyJob(TaciturnJob):
         self.options = options
 
     def run(self):
-        pass
+        facebook_account = self.get_account('facebook')
+        facebook_handler = FacebookHandler(self.options, self.session, facebook_account)
+
+        post_link = 'https://revocation.bandcamp.com/track/teratogenesis'
+
+        post_body = """Teratogenesis
+from Scion AV Presents 'Teratogenesis' by Revocation
+
+𝕎𝕖 𝕣𝕖𝕒𝕝𝕝𝕪 𝕟𝕖𝕖𝕕 𝕪𝕠𝕦𝕣 𝕙𝕖𝕝𝕡! ☑️ 𝕝𝕚𝕜𝕖 ☑️ 𝕔𝕠𝕞𝕞𝕖𝕟𝕥 ☑️ 𝕤𝕙𝕒𝕣𝕖
+
+#music #metalmusic #goodmusic #metalcore #grindcore #metalband #technicaldeathmetal #like #follow #techdeath #songs #radio #deathcore #doommetal #rock #death #explorepage #metalheads #friends #nowplaying #musicstreaming #deathmetal #brutaldeathmetal #bandcamp #metal #heavymetal #thrashmetal #blackmetal #extrememetal #guitar
+        """
+
+        facebook_handler.login()
+        fb_post_link = facebook_handler.pagepost_create('RBGuy9000', post_link, post_body)
+
+        print("new page post link =", fb_post_link)
 
 
 job = RootBeerGuyJob()

@@ -14,7 +14,16 @@
 # You should have received a copy of the GNU General Public License
 # along with Tactiurn.  If not, see <https://www.gnu.org/licenses/>.
 
-from selenium.common.exceptions import TimeoutException, NoSuchElementException, StaleElementReferenceException
+from selenium.common.exceptions import (
+    TimeoutException,
+    NoSuchElementException,
+    StaleElementReferenceException,
+    UnexpectedAlertPresentException
+)
+
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 
@@ -61,29 +70,51 @@ class FacebookHandler(BaseApplicationHandler):
         login_button.click()
 
         # check facebook icon to verify ...
-        self.driver.find_element(
-            By.XPATH, '//*[starts-with(@id,"mount")]/div/div/div[1]/div[2]/div[1]/a[@aria-label="Facebook"]')
+        self.e.header_facebook_icon()
+
+    def goto_homepage(self):
+        self.driver.get(self.application_url)
+        # self.e.header_facebook_icon().click()
+
+    def goto_user_page(self):
+        self.e.header_profile_tab().click()
+        self.e.header_profile_tab_profile().click()
 
     def goto_page(self, page_path):
         self.driver.get(self.application_url+'/'+page_path)
 
     def pagepost_create(self, page_path, post_link, post_body):
+        self.goto_page(page_path)
+        admin_header_y = self.e.page_admin_overhang_bottom()
+
+        # scan the first post ...
         first_post = self.e.page_post_first()
+        self.scrollto_element(first_post, offset=admin_header_y)
+
+        with open('fb_page_post.html', 'w') as f:
+            f.write(first_post.get_attribute('innerHTML'))
+
         first_post_link = self.e.page_post_link(first_post)
+        print('pagepost_create: first_post_link =', first_post_link)
 
+        # do our our post ...
         self.pagepost_esablish_link(page_path, post_link)
-
         create_post_input = self.e.page_post_input()
+        print('pagepost_create: sending post body')
+        sleep(3)
         create_post_input.send_keys(post_body)
+        print('pagepost_create: getting post submit button')
+        sleep(3)
         create_post_submit = self.e.page_post_submitbutton()
         create_post_submit.click()
 
         # now, wait for new post to show up on the page, verify and extract url ...
         # we're just going to try to wait until the first_post_link != new_first_link
-        for try_n in range(self.default_load_retries+1):
+        for try_n in range(1, self.default_load_retries+1):
             sleep(10)
             new_first_post = self.e.page_post_first()
             new_first_post_link = self.e.page_post_link(new_first_post)
+            print("pagepost_create: '{}' != '{}'".format(new_first_post_link, first_post_link))
             if new_first_post_link != first_post_link:
                 return new_first_post_link
             else:
@@ -93,31 +124,47 @@ class FacebookHandler(BaseApplicationHandler):
 
     def pagepost_esablish_link(self, page_path, link_url, retries=10):
         "puts the link in the create page input, makes sure the preview loads with image, then removes the link text."
+        self.goto_page(page_path)
+        admin_header_y = self.e.page_admin_overhang_bottom()
+
         parsed_link = urllib.parse.urlparse(link_url)
 
         for try_n in range(1, retries+1):
             try:
+                print("pagepost_esablish_link: getting page post elements ...")
                 create_post_button = self.e.page_create_post_button()
-                self.scrollto_element(create_post_button)
+                self.scrollto_element(create_post_button, offset=admin_header_y)
                 create_post_button.click()
 
                 # insert link text to input ...
+                print("pagepost_esablish_link: sending link text ...")
                 create_post_input = self.e.page_post_input()
                 create_post_input.send_keys(link_url+' ')
-                create_post_input.send_keys(Keys.SHIFT + Keys.ENTER)
+                # create_post_input.send_keys(Keys.SHIFT + Keys.ENTER)
 
+                print("pagepost_esablish_link: scanning for link preview image ...")
                 preview_image = self.e.page_post_link_image(parsed_link.netloc)
                 if preview_image is not None:
+                    print("Got preview image!")
+
+                    create_post_input.send_keys(Keys.COMMAND + "A")
+                    create_post_input.send_keys(Keys.DELETE)
+
                     return True
 
-            except (StaleElementReferenceException, NoSuchElementException, TimeoutException) as e:
+            except ( #UnexpectedAlertPresentException,
+                    StaleElementReferenceException,
+                    NoSuchElementException,
+                    TimeoutException) as e:
                 print('pagepost_esablish_link: caught exception:', e)
+                sleep(0.2)
                 if try_n == retries:
                     raise e
                 else:
                     # try reloading the page and trying again ...
                     print("pagepost_esablish_link, caught exception try {} of {}: {}".format(try_n, retries, e))
                     self.goto_page(page_path)
+                    self.e.kill_alert()
 
 
 class FacebookHandlerWebElements(ApplicationWebElements):
@@ -157,7 +204,7 @@ class FacebookHandlerWebElements(ApplicationWebElements):
         return self.driver.find_element(
             By.XPATH, '//div[@aria-label="Remove post attachment"]/i')
 
-    def page_post_link_image(self, link_domain):
+    def page_post_link_image(self, link_domain, retries=10):
         # html of post image in preview:
         # <img height="261" width="500" alt="Schlake Opus (track), by Anvil Mesa"
         # class="i09qtzwb n7fi1qx3 datstx6m pmk7jnqg j9ispegn kr520xx4 k4urcfbm bixrwtb6"
@@ -166,7 +213,24 @@ class FacebookHandlerWebElements(ApplicationWebElements):
         # the <a href=...> is going to contain our link's domain, we can see anchor our xpath on the href containing that
         # this seems pretty good:
         # //a[contains(@href, "{domain}")]//img
-        return self.driver.find_element(By.XPATH, '//a[contains(@href,"{}")]//img'.format(link_domain))
+        for try_n in range(1, retries+1):
+            try:  # following-sibling::div
+                self.driver.implicitly_wait(0)
+                print("page_post_link_image: scanning for image with domain '{}'".format(link_domain))
+                img_element = self.driver.find_element(By.XPATH, '//a[contains(@href,"{}")]//img'.format(link_domain))
+                print("page_post_link_image: img_element =", img_element)
+                return img_element
+            except (StaleElementReferenceException, NoSuchElementException) as e:
+                print('page_post_link_image: caught exception:', e)
+                # sleep(5)
+                if try_n == retries:
+                    raise e
+                else:
+                    print("page_post_link_image, caught exception try {} of {}: {}".format(try_n, retries, e))
+            finally:
+
+
+                self.driver.implicitly_wait(self.implicit_default_wait)
 
     def page_post_submitbutton(self):
         return self.driver.find_element(By.XPATH, '//*[starts-with(@id,"mount")]//div[text()="Post"]')
@@ -177,22 +241,97 @@ class FacebookHandlerWebElements(ApplicationWebElements):
         # XXX note this is 4 tags below actual post enclosing tag, but it's a good point of reference! (/../../../../)
         return self.driver.find_element(
             By.XPATH, '//div[@data-testid="Keycommand_wrapper_feed_story"]'
-                      '/div[@data-testid="Keycommand_wrapper"]/div[@aria-posinset="10"]')
+                      '/div[@data-testid="Keycommand_wrapper"]/div[@aria-posinset="1"]')
 
     def page_post_isfirstlinematch(self, page_post, post_body):
         "for quickly verifying the content of the post"
-        page_element = page_post.find_element(By.XPATH, './div/div/div/div/div/div[2]/div/div[3]'
+        page_element = page_post.find_element(By.XPATH, './/div/div/div/div/div/div[2]/div/div[3]'
                                                         '/div[1]/div/div/div/span/div[1]/div[1]')
         return page_element.text == post_body[:post_body.index('\n')]
 
-    def page_post_link(self, page_post):
+    def page_post_link(self, page_post, retries=10):
         # get the link from a page post:
         # //*[@id="jsc_c_1k"]/span[2]/span/a
-        # /html/body/div[1]/div/div/div[1]/div[3]/div/div/div[1]/div/div[2]/div/div/div[4]/div[2]/div/div[2]/div[3]/div/div/div[10]/div/div/div/div/div/div/div/div/div/div[2]/div/div[2]/div/div[2]/div/div[2]/span/span/span[2]/span/a/span/html/body/div[1]/div/div/div[1]/div[3]/div/div/div[1]/div/div[2]/div/div/div[4]/div[2]/div/div[2]/div[3]/div/div/div[10]/div/div/div/div/div/div/div/div/div/div[2]/div/div[2]/div/div[2]/div/div[2]/span/span/span[2]/span/a/span/html/body/div[1]/div/div/div[1]/div[3]/div/div/div[1]/div/div[2]/div/div/div[4]/div[2]/div/div[2]/div[3]/div/div/div[10] /div/div/div/div/div/div/div/div/div/div[2]/div/div[2]/div/div[2]/div/div[2]/span/span/span[2]/span/a/span
-        # Path after div[@aria-posinset="N"]:
-        # /div/div/div/div/div/div[2]/div/div[2]/div/div[2]/div/div[2]/span/span/span[2]/span/a
-        # Pretty decent relative path:
-        # ./div[2]/span/span/span[2]/span/a
-        link_element = page_post.find_element(By.XPATH, './div[2]/span/span/span[2]/span/a')
-        parsed_href = urllib.parse.urlparse(link_element.get_attribute('href'))
-        return parsed_href.path
+        # /html/body/div[1]/div/div/div[1]/div[3]/div/div/div[1]/div/div[2]/div/div/div[4]/div[2]/div/div[2]/div[3]/div/div/div[1]/div/div/div/div/div/div/div/div/div/div[2]/div/div[2]/div/div[2]/div/div[2]/span/span/span[2]/span/a
+        # ./div/div/div/div/div/div[2]/div/div[2]/div/div[2]/div/div[2]/span/span/span[2]/span/div/span
+        # ./div/div/div/div/div/div[2]/div/div[2]/div/div[2]/div/div[2]/span/span/span[2]/span/a
+        for try_n in range(1, retries+1):
+            try:  # following-sibling::div
+                self.driver.implicitly_wait(10)
+
+                # strangely, we need to mouse over before the element becomes a proper link:
+                mouseover_element = page_post.find_element(
+                    By.XPATH,
+                    '(.//span[text()=" · "]/parent::span/parent::span/preceding-sibling::span)[2]')
+                print("page_post_link: Got mouse over element.")
+                ActionChains(self.driver).move_to_element(mouseover_element).perform()
+
+                link_element = page_post.find_element(
+                    By.XPATH,
+                    '(.//span[text()=" · "]/parent::span/parent::span/preceding-sibling::span/span/a)[1]')
+
+                print('page_post_link: got element')
+                attr_href = link_element.get_attribute('href')
+                print('page_post_link: href =', attr_href)
+                parsed_href_path = urllib.parse.urlparse(attr_href).path
+                print('page_post_link: parsed href path =', parsed_href_path)
+
+                return parsed_href_path
+            except (StaleElementReferenceException, NoSuchElementException) as e:
+                print('page_post_link: caught exception:', e)
+                if try_n == retries:
+                    raise e
+                else:
+                    print("page_post_link, caught exception try {} of {}: {}".format(try_n, retries, e))
+            finally:
+                self.driver.implicitly_wait(self.implicit_default_wait)
+
+    def header_facebook_icon(self):
+        return self.driver.find_element(
+            By.XPATH, '//*[starts-with(@id,"mount")]/div/div/div[1]/div[2]/div[1]/a[@aria-label="Facebook"]')
+
+    def header_profile_tab(self):
+        return self.driver.find_element(
+            By.XPATH, '//*[starts-with(@id,"mount")]'
+                     '/div/div/div[1]/div[2]/div[4]/div[1]/span/div/'
+                     'div[@aria-label="Account"]/img')
+
+    def header_profile_tab_profile(self):
+        # <div aria-label="Account" role="dialog" ...>
+        # <span dir="auto" ...>See your profile</span>
+        return self.driver.find_element(
+            By.XPATH, '//div[@aria-label="Account" and @role="dialog"]'
+                      '//span[@dir="auto" and text()="See your profile"]')
+
+    def page_admin_overhang_bottom(self):
+        # //*[starts-with(@id,"mount")]/div/div/div[1]/div[3]/div/div/div[1]/div/div[2]/div/div/div[3]
+        # //*[starts-with(@id,"mount")]/div/div/div[1]/div[3]/div/div/div[1]/div/div[2]/div/div/div[3]
+        e = self.driver.find_element(
+            By.XPATH, '//*[starts-with(@id,"mount")]'
+                      '/div/div/div[1]/div[3]/div/div/div[1]/div/div[2]/div/div/div[3]/div/div/div')
+        self.driver.execute_script("arguments[0].scrollIntoView();", e)
+
+        print("page_admin_overhang_bottom: got element.")
+
+        offset_script = """
+        var rect = arguments[0].getBoundingClientRect();
+        return rect.bottom;
+        """
+        admin_header_bottom = self.driver.execute_script(offset_script, e)
+
+        print("page_admin_overhang_bottom: admin_header_bottom =", admin_header_bottom)
+        return int(admin_header_bottom)
+
+    def kill_alert(self):
+        try:
+            WebDriverWait(self.driver, 3).until(EC.alert_is_present(),
+                                            'Timed out waiting for PA creation ' +
+                                            'confirmation popup to appear.')
+
+            alert = self.driver.switch_to.alert
+            alert.accept()
+            print("kill_alert: alert accepted")
+        except TimeoutException:
+            print("kill_alert: no alert")
+        finally:
+            self.driver.switch_to.default_content()
