@@ -48,13 +48,7 @@ class FacebookHandler(BaseApplicationHandler):
     def __init__(self, options, db_session, app_account, elements=None):
         super().__init__(options, db_session, app_account, FacebookHandlerWebElements)
 
-        self.follow_back_hiatus = self.config['app:twitter']['follow_back_hiatus']
-        self.unfollow_hiatus = self.config['app:twitter']['unfollow_hiatus']
-        self.action_timeout = self.config['app:twitter']['action_timeout']
-        self.mutual_expire_hiatus = self.config['app:twitter']['mutual_expire_hiatus']
-
         self.init_webdriver()
-
         self.goto_homepage()
 
     def login(self):

@@ -34,6 +34,7 @@ default_config = {
     'taciturn_root': taciturn_root,
     'cookie_dir': os.path.join(taciturn_root, 'cookies'),
     'screenshots_dir': os.path.join(taciturn_root, 'screenshots'),
+    'assets_dir': os.path.join(taciturn_root, 'assets'),
     'database_url': 'sqlite:///' + os.path.join(taciturn_root, 'db', 'taciturn.sqlite'),
     'orm_connect_args': {'timeout': 60},
 

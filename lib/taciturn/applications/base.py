@@ -44,8 +44,10 @@ from io import BytesIO
 
 import os
 import time
+import datetime
 import random
 import numbers
+from hashlib import sha256
 from http.cookiejar import MozillaCookieJar
 
 
@@ -66,7 +68,6 @@ class BaseApplicationHandler(ABC):
     # timeout wait between retries:
     default_load_retry_timeout = 60*3
 
-    local_asset_prefix = '/Users/johnk/PycharmProjects/Taciturn/Taciturn/assets/application'
     application_asset_dirname = 'base_app'
 
     implicit_wait_default = 60
@@ -86,6 +87,7 @@ class BaseApplicationHandler(ABC):
 
         self.config = load_config()
 
+        self.assets_dir = self.config['assets_dir']
         self.screenshots_dir = self.config.get('screenshots_dir')
 
         # init white/blacklists:
@@ -204,6 +206,20 @@ class BaseApplicationHandler(ABC):
     def login(self):
         raise NotImplementedError
 
+    def download_image(self, image_url, prefix=None, file_extension='.jpg'):
+        if prefix is None:
+            prefix = self.application_name+'-'
+
+        file_name = prefix + sha256(str(datetime.datetime.now()).encode('utf-8')).hexdigest()+file_extension
+        local_file_name = os.path.join(self.assets_dir, 'application', self.application_name, file_name)
+
+        image_request = requests.get(image_url, stream=True)
+        if image_request.status_code == 200:
+            with open(local_file_name, 'wb') as f:
+                for chunk in image_request:
+                    f.write(chunk)
+        return local_file_name
+
     def is_default_image(self, image_url, default_image=None):
         return self.image_cmp(
             image_url,
@@ -259,7 +275,7 @@ class BaseApplicationHandler(ABC):
         return True
 
     def app_asset_prefix(self):
-        return os.path.join(self.local_asset_prefix, self.application_asset_dirname)
+        return os.path.join(self.assets_dir, self.application_asset_dirname)
 
 
 class ApplicationWebElements(ABC):

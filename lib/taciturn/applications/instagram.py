@@ -808,7 +808,7 @@ class InstagramHandlerWebElements(ApplicationWebElements):
         lightbox = self.followers_lightbox()
         return lightbox.find_element(By.XPATH, './div/div[2]/ul/div/li[1]')
 
-    def follower_entry_n(self, n=1):
+    def follower_entry_n(self, n):
         # lightbox = self.followers_lightbox()
         return self.driver.find_element(By.XPATH, self._followers_lighbox_prefix
                                       +'/div/div[2]/ul/div/li[{}]'.format(n))
@@ -931,7 +931,7 @@ class InstagramHandlerWebElements(ApplicationWebElements):
             return False
         return True
 
-    def follow_click_verify_cb(self, n=1):
+    def follow_click_verify_cb(self, n):
         def follow_click_verify(x):
             return self.follower_button(n).text in ('Following', 'Requested')
         return follow_click_verify

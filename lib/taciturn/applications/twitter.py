@@ -47,6 +47,7 @@ from taciturn.db.base import (
 
 BUTTON_TEXT_FOLLOWING = ('Following', 'Pending', 'Cancel', 'Unfollow')
 BUTTON_TEXT_NOT_FOLLOWING = ('Follow',)
+DEBUG_HALT_EXCEPTION = False
 
 
 class TwitterHandler(FollowerApplicationHandler):
@@ -135,6 +136,8 @@ class TwitterHandler(FollowerApplicationHandler):
 
             if self.e.is_followers_end(follower_entry):
                 print("List end encountered, stopping. (top)")
+                if DEBUG_HALT_EXCEPTION:
+                    raise RuntimeError("Stopping execution!")
                 return followed_count
 
             # extract entry fields, continue'ing asap to avoid unnecessary work ...
@@ -284,7 +287,9 @@ class TwitterHandler(FollowerApplicationHandler):
             # check to see if this looks like the end:
             if self.e.is_followers_end(follower_entry):
                 print("List end encountered, stopping.")
-                return entries_added
+                if DEBUG_HALT_EXCEPTION:
+                    raise RuntimeError("Stopping execution!")
+                    return entries_added
 
             # check to see if entry is in the database:
             self.scrollto_element(follower_entry)
@@ -324,7 +329,9 @@ class TwitterHandler(FollowerApplicationHandler):
         while True:
             if self.e.is_followers_end(following_entry):
                 print("List end encountered, stopping.")
-                return entries_added
+                if DEBUG_HALT_EXCEPTION:
+                    raise RuntimeError("Stopping execution!")
+                    return entries_added
 
             # check to see if entry is in the database:
             self.scrollto_element(following_entry)
@@ -367,6 +374,8 @@ class TwitterHandler(FollowerApplicationHandler):
         while quota is None or quota > unfollow_count:
             if self.e.is_followers_end(following_entry):
                 print("List end encountered, stopping. (top)")
+                if DEBUG_HALT_EXCEPTION:
+                    raise RuntimeError("Stopping execution!")
                 return unfollow_count
 
             self.scrollto_element(following_entry, offset=tab_overlap_y)
@@ -733,23 +742,45 @@ class TwitterHandlerWebElements(ApplicationWebElements):
             self.driver.implicitly_wait(self.implicit_default_wait)
 
     def is_followers_end(self, follower_entry, retries=10):
+        def dump_debug_html():
+            with open('is_followers_end.html', 'w') as fh:
+                fh.write(follower_entry.get_attribute('innerHTML'))
+
         for try_n in range(1, retries+1):
+
+            # first, try to read a non-empty node:
             try:
-                self.driver.implicitly_wait(0)
-                el = follower_entry.find_element(
-                    By.XPATH,
-                    './div/div[not(node())]'
-                ).text
-                print("is_followers_end: True")
+                self.driver.implicitly_wait(30)
+                el = follower_entry.find_element(By.XPATH, './div/div[node()]')
+                dump_debug_html()
+                print("is_followers_end (non-empty): False")
+                return False
+            except (NoSuchElementException, StaleElementReferenceException, TimeoutException) as e:
+                # print('is_followers_end: caught exception:', e)
+                if try_n == retries:
+                    dump_debug_html()
+                    print("is_followers_end (non-empty): False")
+                    return False
+            finally:
+                 self.driver.implicitly_wait(self.implicit_default_wait)
+
+            # then, try to read an empty node:
+            try:
+                self.driver.implicitly_wait(30)
+                el = follower_entry.find_element(By.XPATH, './div/div[not(node())]')
+                dump_debug_html()
+                print("is_followers_end (is-empty): True")
                 return True
             except (NoSuchElementException, StaleElementReferenceException, TimeoutException) as e:
                 # print('is_followers_end: caught exception:', e)
                 if try_n == retries:
-                    print("is_followers_end: False")
+                    dump_debug_html()
+                    print("is_followers_end (is-empty): False")
                     return False
             finally:
-                self.driver.implicitly_wait(self.implicit_default_wait)
-        print("is_followers_end: False (out)")
+                 self.driver.implicitly_wait(self.implicit_default_wait)
+        dump_debug_html()
+        print("is_followers_end (out): False")
         return False
 
     # def verify_unfollow_lightbox(self):
