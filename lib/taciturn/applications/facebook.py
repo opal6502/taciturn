@@ -144,7 +144,9 @@ class FacebookHandler(BaseApplicationHandler):
                 preview_image = self.e.page_post_link_image(parsed_link.netloc)
                 if preview_image is not None:
                     print("Got preview image!")
-                    create_post_input.clear()
+
+                    for n in range(len(link_url)+1):
+                        create_post_input.send_keys(Keys.BACKSPACE)
 
                     # take a look at this ajaxy input field ...
                     # create_post_input = self.e.page_post_input()
