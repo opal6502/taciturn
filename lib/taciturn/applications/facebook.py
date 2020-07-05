@@ -18,7 +18,8 @@ from selenium.common.exceptions import (
     TimeoutException,
     NoSuchElementException,
     StaleElementReferenceException,
-    UnexpectedAlertPresentException
+    UnexpectedAlertPresentException,
+    ElementClickInterceptedException
 )
 
 from selenium.webdriver.support.ui import WebDriverWait
@@ -45,8 +46,8 @@ class FacebookHandler(BaseApplicationHandler):
 
     implicit_default_wait = 60
 
-    def __init__(self, options, db_session, app_account, elements=None):
-        super().__init__(options, db_session, app_account, FacebookHandlerWebElements)
+    def __init__(self, options, db_session, app_account, driver=None, elements=None):
+        super().__init__(options, db_session, app_account, driver, FacebookHandlerWebElements)
 
         self.init_webdriver()
         self.goto_homepage()
@@ -79,14 +80,12 @@ class FacebookHandler(BaseApplicationHandler):
 
     def pagepost_create(self, page_path, post_link, post_body):
         self.goto_page(page_path)
+        sleep(10)
         admin_header_y = self.e.page_admin_overhang_bottom()
 
         # scan the first post ...
         first_post = self.e.page_post_first()
         self.scrollto_element(first_post, offset=admin_header_y)
-
-        with open('fb_page_post.html', 'w') as f:
-            f.write(first_post.get_attribute('innerHTML'))
 
         first_post_link = self.e.page_post_link(first_post)
         print('pagepost_create: first_post_link =', first_post_link)
@@ -139,8 +138,11 @@ class FacebookHandler(BaseApplicationHandler):
                 if preview_image is not None:
                     print("Got preview image!")
 
-                    for n in range(len(link_url)+1):
-                        create_post_input.send_keys(Keys.BACKSPACE)
+                    #for n in range(len(link_url)+1):
+                    #    create_post_input.send_keys(Keys.BACKSPACE)
+
+                    create_post_input.send_keys(Keys.COMMAND + 'a')
+                    create_post_input.send_keys(Keys.BACKSPACE)
 
                     # take a look at this ajaxy input field ...
                     # create_post_input = self.e.page_post_input()
@@ -148,7 +150,7 @@ class FacebookHandler(BaseApplicationHandler):
                         f.write(create_post_input.get_attribute('innerHTML'))
 
                     return True
-            except (StaleElementReferenceException, NoSuchElementException) as e:
+            except (StaleElementReferenceException, NoSuchElementException, ElementClickInterceptedException) as e:
                 print('pagepost_esablish_link: caught exception:', e)
                 # sleep(5)
                 if try_n == retries:
@@ -186,7 +188,7 @@ class FacebookHandlerWebElements(ApplicationWebElements):
         # //div[@role="textbox" and @contenteditable="true"]/div[@data-contents="true"]/div[@data-block="true"]/div/span/br[@data-text="true"]
         # '(//div[@role="dialog"])[2]//div[@role="textbox" and @contenteditable="true"]'
         return self.driver.find_element(
-            By.XPATH, '(//div[@role="dialog"])[2]//div[@role="textbox" and @contenteditable="true"]')
+            By.XPATH, '(//div[@role="dialog"])[1]//div[@role="textbox" and @contenteditable="true"]')
         # return self.driver.find_element(
         #     By.XPATH, '//div[starts-with(text(),"Write something")]/../..'
         #               '//div[@role="textbox" and @contenteditable="true"]')
@@ -281,6 +283,12 @@ class FacebookHandlerWebElements(ApplicationWebElements):
                 return parsed_href_path
             except (StaleElementReferenceException, NoSuchElementException) as e:
                 print('page_post_link: caught exception:', e)
+
+                offset = self.page_admin_overhang_bottom()
+                self.driver.execute_script("arguments[0].scrollIntoView();", page_post)
+                scroll_position = self.driver.execute_script("return document.documentElement.scrollTop;")
+                self.driver.execute_script("window.scrollTo(0, arguments[0]);", scroll_position - offset)
+
                 if try_n == retries:
                     raise e
                 else:

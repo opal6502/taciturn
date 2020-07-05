@@ -69,21 +69,23 @@ class BaseApplicationHandler(ABC):
     default_load_retry_timeout = 60*3
 
     application_asset_dirname = 'base_app'
+    default_profile_image = None
 
     implicit_wait_default = 60
 
     # database
     db_default_uri = "sqlite:///db/taciturn.sqlite"
 
-    def __init__(self, options, db_session, app_account, elements=None):
-
+    def __init__(self, options, db_session, app_account, driver=None, elements=None):
         self.options = options
-
         self.session = db_session
+
         self.app_username = app_account.name
         self.app_password = app_account.password
         self.app_account = app_account
+
         self._elements_cls = elements
+        self.driver = driver
 
         self.config = load_config()
 
@@ -116,6 +118,12 @@ class BaseApplicationHandler(ABC):
 
     def init_webdriver(self, user_agent=None):
         # init Selenium:
+
+        # if driver is set by init, just go with that:
+        if self.driver is not None:
+            self._init_elements()
+            return
+
         if self.options.driver:
             webdriver_type = self.options.driver[0]
         else:
@@ -168,7 +176,9 @@ class BaseApplicationHandler(ABC):
             raise TypeError("Webdriver '{}' not supported, check config!".format(webdriver_type))
 
         self.driver.implicitly_wait(self.implicit_wait_default)
+        self._init_elements()
 
+    def _init_elements(self):
         if self._elements_cls is not None:
             self.e = self._elements_cls(self.driver, self.implicit_wait_default)
         else:
@@ -223,7 +233,7 @@ class BaseApplicationHandler(ABC):
     def is_default_image(self, image_url, default_image=None):
         return self.image_cmp(
             image_url,
-            default_image or os.path.join(self.app_asset_prefix(),
+            default_image or os.path.join(self.assets_dir, 'application', self.application_name,
                                           default_image or self.default_profile_image))
 
     def scrollto_element(self, element, offset=None):

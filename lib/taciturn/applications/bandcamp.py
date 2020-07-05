@@ -59,9 +59,13 @@ GENRE_TAGS = {
             '#musicproducer', '#producer', '#musician', '#art', '#nowplaying', '#musicstreaming', '#musiclover',
             '#love', '#like', '#follow', '#life', '#friends', '#goodmusic', '#indie'],
     'rock': ['#music', '#bandcamp', '#radio', '#rockmusic', '#rock', '#alternative', '#guitar',
-            '#classicrock', '#indie', '#foundsound', '#noise', '#atmosphere', '#song', '#artist', '#intelligent', '#sfx',
-            '#musicproducer', '#producer', '#musician', '#art', '#nowplaying', '#musicstreaming', '#musiclover',
+            '#classicrock', '#indie', '#foundsound', '#noise', '#atmosphere', '#song', '#artist', '#rocknroll',
+             '#guitar', '#rockband', '#producer', '#musician', '#art', '#nowplaying', '#musicstreaming', '#musiclover',
             '#love', '#like', '#follow', '#life', '#friends', '#goodmusic', '#indie'],
+    'metal': ['#music', '#bandcamp', '#radio', '#metalmusic', '#metal', '#metalband', '#technicaldeathmetal',
+             '#techdeath', '#deathcore', '#doommetal', '#death', '#metalheads', '#thrashmetal', '#thrash', '#blackmetal',
+             '#extrememetal', '#guitar', '#band', '#musician', '#art', '#nowplaying', '#musicstreaming', '#musiclover',
+             '#love', '#like', '#follow', '#life', '#friends', '#goodmusic', '#indie'],
 }
 
 
@@ -73,8 +77,8 @@ class BandcampHandler(BaseApplicationHandler):
 
     implicit_default_wait = 60
 
-    def __init__(self, options, db_session, app_account, elements=None):
-        super().__init__(options, db_session, app_account, BandcampHandlerWebElements)
+    def __init__(self, options, db_session, app_account, driver=None, elements=None):
+        super().__init__(options, db_session, app_account, driver, BandcampHandlerWebElements)
 
         self.init_webdriver()
         self.goto_homepage()
@@ -83,6 +87,7 @@ class BandcampHandler(BaseApplicationHandler):
         raise NotImplementedError("Why would you need this, anyway?")
 
     def parse_track_from_page(self, track_url):
+        self.driver.get(track_url)
         track_title = self.e.track_title()
         track_artist = self.e.track_artist()
         track_album = self.e.track_album()
@@ -100,7 +105,7 @@ class BandcampHandler(BaseApplicationHandler):
         track_img_local = self.download_image(track_img_large_src, prefix='bandcamp-img-')
         print("Downloaded album art: {}".format(track_img_local))
 
-        return BandcampTrackData(
+        new_track_data = BandcampTrackData(
             url=track_url,
             title=track_title,
             artist=track_artist,
@@ -109,9 +114,16 @@ class BandcampHandler(BaseApplicationHandler):
             img_local=track_img_local
         )
 
+        print("parse_track_from_page: new_track_data =", new_track_data)
+
+        return new_track_data
+
     # turns a BandcampTrackData entry to a string formatted like on bandcamp:
     @staticmethod
-    def author_string(self, bandcamp_track_data):
+    def author_string(bandcamp_track_data):
+        if not isinstance(bandcamp_track_data, BandcampTrackData):
+            raise TypeError("Expected BandcampTrackData, got {}".format(type(bandcamp_track_data)))
+        
         if bandcamp_track_data.album is not None:
             track_str = (bandcamp_track_data.title+'\n'
                          +'from '+bandcamp_track_data.album+' by '+bandcamp_track_data.artist)
@@ -123,6 +135,12 @@ class BandcampHandler(BaseApplicationHandler):
     @staticmethod
     def genre_tags(genre):
         return GENRE_TAGS[genre]
+
+    def goto_homepage(self):
+        self.driver.get(self.application_url)
+
+    def goto_user_page(self):
+        raise NotImplementedError
 
 
 class BandcampHandlerWebElements(ApplicationWebElements):
@@ -137,12 +155,12 @@ class BandcampHandlerWebElements(ApplicationWebElements):
     def track_album(self):
         # this may not be present!
         try:
-            self.driver.implicitly_wait(5)
+            self.driver.implicitly_wait(1)
             return self.driver.find_element(
                 By.XPATH,
                 '//*[@id="name-section"]/h3/span[1]/a/span[@class="fromAlbum" and @itemprop="name"]').text
         except NoSuchElementException:
-            return False
+            return None
         finally:
             self.driver.implicitly_wait(self.implicit_default_wait)
 

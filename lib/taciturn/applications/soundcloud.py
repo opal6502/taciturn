@@ -62,8 +62,8 @@ class SoundcloudHandler(FollowerApplicationHandler):
 
     follow_random_wait = (10, 60)
 
-    def __init__(self, options, db_session, app_account, elements=None):
-        super().__init__(options, db_session, app_account, SoundcloudHandlerWebElements)
+    def __init__(self, options, db_session, app_account, driver=None, elements=None):
+        super().__init__(options, db_session, app_account, driver, SoundcloudHandlerWebElements)
 
         self.follow_back_hiatus = self.config['app:soundcloud']['follow_back_hiatus']
         self.unfollow_hiatus = self.config['app:soundcloud']['unfollow_hiatus']

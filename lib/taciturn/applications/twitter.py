@@ -61,8 +61,8 @@ class TwitterHandler(FollowerApplicationHandler):
 
     follow_random_wait = (10, 60)
 
-    def __init__(self, options, db_session, app_account, elements=None):
-        super().__init__(options, db_session, app_account, TwitterHandlerWebElements)
+    def __init__(self, options, db_session, app_account, driver=None, elements=None):
+        super().__init__(options, db_session, app_account, driver, TwitterHandlerWebElements)
 
         self.follow_back_hiatus = self.config['app:twitter']['follow_back_hiatus']
         self.unfollow_hiatus = self.config['app:twitter']['unfollow_hiatus']
@@ -750,9 +750,10 @@ class TwitterHandlerWebElements(ApplicationWebElements):
 
             # first, try to read a non-empty node:
             try:
-                self.driver.implicitly_wait(30)
-                el = follower_entry.find_element(By.XPATH, './div/div[node()]')
+                self.driver.implicitly_wait(10)
                 dump_debug_html()
+                # use follower_username to detect a non-empty element:
+                self.follower_username(follower_entry)
                 print("is_followers_end (non-empty): False")
                 return False
             except (NoSuchElementException, StaleElementReferenceException, TimeoutException) as e:

@@ -179,6 +179,10 @@ def parse_arguments(args=None):
                     help="Webdriver to use: htmlunit htmlunitjs chrome chrome_headless firefox firefox_headless")
     ap.add_argument('-C', '--cookies', type=str, nargs=1, default=None,
                     help="Load a cookies.txt file")
+    ap.add_argument('-l', '--link', type=str, nargs=1, default=None,
+                    help="Specify a bandcamp link to post, for the 'rbg_bandcamp_post' job")
+    ap.add_argument('-g', '--genre', type=str, nargs=1, default=None,
+                    help="Specify a musical genre, for the 'rbg_bandcamp_post' job")
 
     # parse arguments:
     pa = ap.parse_args(args)
