@@ -40,13 +40,13 @@ default_config = {
 
     'asset_root': os.path.join(taciturn_root, 'assets'),
 
-    'day_length': datetime.timedelta(hours=6),
+    'day_length': datetime.timedelta(hours=8),
 
     # selenium webdriver type:  'htmlunit', 'htmlunitjs', 'chrome', 'chrome_headless', 'firefox'
     'selenium_webdriver': 'chrome_headless',
 
     'app:*': {
-        'daily_max_follows': 200,
+        'daily_max_follows': 400,
         'round_max_follows': 10,
         'daily_max_unfollows': 400,
         'round_max_unfollows': 40,
@@ -62,7 +62,7 @@ default_config = {
         'ignore_verified': False,
     },
     'app:instagram': {
-        'daily_max_follows': 300,
+        'daily_max_follows': 400,
         'round_max_follows': 10
     },
     'app:youtube': {

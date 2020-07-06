@@ -134,6 +134,7 @@ class TwitterHandler(FollowerApplicationHandler):
 
         while quota is None or followed_count < quota:
 
+            self.scrollto_element(follower_entry, offset=tab_overlap_y)
             if self.e.is_followers_end(follower_entry):
                 print("List end encountered, stopping. (top)")
                 if DEBUG_HALT_EXCEPTION:
@@ -157,7 +158,7 @@ class TwitterHandler(FollowerApplicationHandler):
                 follower_entry = self.e.next_follower_entry(follower_entry)
                 continue
 
-            self.scrollto_element(follower_entry, offset=tab_overlap_y)
+            # self.scrollto_element(follower_entry, offset=tab_overlap_y)
 
             if self.in_blacklist(entry_username):
                 print("{} is in blacklist, skip ...")
