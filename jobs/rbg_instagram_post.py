@@ -80,46 +80,13 @@ class RootBeerGuyJob(TaciturnJob):
         genre_tags = ' '.join(GENRE_TAGS[self.genre])
         img_local_path = parsed_track.img_local
 
-        # then, create the facebook post:
-
-        facebook_account = self.get_account('facebook')
-        facebook_handler = FacebookHandler(self.options, self.session, facebook_account, shared_driver)
-
-        facebook_post_body = "{}\n\n{}\n\n{}".format(author_string,
-                                                     help_us_string,
-                                                     genre_tags)
-
-        facebook_handler.login()
-        fb_post_link = facebook_handler.pagepost_create('RBGuy9000', self.target_link, facebook_post_body)
-
-        print("Made facebook post.")
-        # print("new page post link =", fb_post_link)
-
-        # then, create the twitter post:
-
-        twitter_account = self.get_account('twitter')
-        twitter_handler = TwitterHandler(self.options, self.session, twitter_account, shared_driver)
-
-        twitter_post_body = "{}\n\n{}\n\n{}\n\n{}".format(author_string,
-                                                          fb_post_link,
-                                                          help_us_string,
-                                                          genre_tags)
-
-        twitter_handler.login()
-        twitter_handler.post_tweet(twitter_post_body, img_local_path)
-
-        print("Made tweet.")
-
-        # close the shared driver:
-        shared_driver.quit()
-
-        # then, create the instagram post, let it have its own driver and mobile user-agent:
+        bandcamp_handler.quit()
 
         instagram_account = self.get_account('instagram')
         instagram_handler = InstagramHandler(self.options, self.session, instagram_account)
 
         instagram_post_body = "{}\n\n{}\n\n{}\n\n{}".format(author_string,
-                                                            fb_post_link,
+                                                            self.target_link,
                                                             help_us_string,
                                                             genre_tags)
 

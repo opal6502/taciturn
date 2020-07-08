@@ -109,13 +109,13 @@ class FacebookHandler(BaseApplicationHandler):
             new_first_post_link = self.e.page_post_link(new_first_post)
             print("pagepost_create: '{}' != '{}'".format(new_first_post_link, first_post_link))
             if new_first_post_link != first_post_link:
-                return new_first_post_link
+                return self.application_url + new_first_post_link
             else:
                 self.goto_page(page_path)
         else:
             raise AppDataAnchorMissingException("Couldn't verify new post identity")
 
-    def pagepost_esablish_link(self, page_path, link_url, retries=10):
+    def pagepost_esablish_link(self, page_path, link_url, retries=20):
         "puts the link in the create page input, makes sure the preview loads with image, then removes the link text."
 
         admin_header_y = self.e.page_admin_overhang_bottom()

@@ -19,6 +19,7 @@ from selenium.webdriver.common.by import By
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, StaleElementReferenceException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.keys import Keys
 
 from sqlalchemy import and_
 
@@ -237,17 +238,26 @@ class TwitterHandler(FollowerApplicationHandler):
                 # and followers below that entry will show up as blocked unless we wait for the blocked
                 # popover to go away.
                 if self.e.is_follower_blocked_notify_present():
-                    follower_entry = self.e.next_follower_entry(follower_entry)
                     print("Blocked by user.")
                     WebDriverWait(self.driver, timeout=60).until(self.e.blocked_notice_gone_cb())
+                    follower_entry = self.e.next_follower_entry(follower_entry)
                     continue
 
                 if self.e.is_follower_limit_notify_present():
                     print("Unable to follow more at this time!")
                     return followed_count
 
-                WebDriverWait(self.driver, timeout=60).until(self.e.follow_click_verify_cb(follower_entry))
-                print("Follow verified.")
+                # verify follow button indicates follow was successful ...
+                for try_n in range(1, self.default_load_retries+1):
+                    try:
+                        button_text = self.e.follower_button(follower_entry).text
+                        if button_text in BUTTON_TEXT_FOLLOWING:
+                            print("Follow verified.")
+                            break
+                    except (NoSuchElementException, StaleElementReferenceException) as e:
+                        if try_n == self.default_load_retries:
+                            print("Follow button not verified, returning!")
+                            return followed_count
 
                 new_following = Following(name=entry_username,
                                           application_id=self.app_account.application_id,
@@ -332,7 +342,7 @@ class TwitterHandler(FollowerApplicationHandler):
                 print("List end encountered, stopping.")
                 if DEBUG_HALT_EXCEPTION:
                     raise RuntimeError("Stopping execution!")
-                    return entries_added
+                return entries_added
 
             # check to see if entry is in the database:
             self.scrollto_element(following_entry)
@@ -465,6 +475,93 @@ class TwitterHandler(FollowerApplicationHandler):
             following_entry = self.e.next_follower_entry(following_entry)
 
         return unfollow_count
+
+    def post_tweet(self, tweet_body, tweet_image=None):
+        compose_tweet_button = self.driver.find_element(By.XPATH, '//a[@href="/compose/tweet" and @role="button"]')
+        compose_tweet_button.click()
+
+        tweet_text_input = self.driver.find_element(By.XPATH, '//div[@aria-label="Tweet text"]')
+        truncated_tweet_body = self.truncate_tweet(tweet_body)
+        tweet_text_input.send_keys(truncated_tweet_body)
+        tweet_text_input.send_keys(Keys.ESCAPE)
+
+        if tweet_image is not None:
+            tweet_image_input = self.driver.find_element(
+                By.XPATH, '//div[@aria-label="Add photos or video"]/following-sibling::input[@type="file"]')
+            tweet_image_input.send_keys(tweet_image)
+
+            # //div[@aria-label="Media" and @role="group"]//img
+            tweet_image_attached = '//div[@aria-label="Media" and @role="group"]//img'
+            WebDriverWait(self.driver, timeout=60)\
+                .until(EC.presence_of_element_located((By.XPATH, tweet_image_attached)))
+
+        submit_tweet_button = self.driver.find_element(
+            By.XPATH, '//div[@role="button"]//span[text()="Tweet"]')
+        self.scrollto_element(submit_tweet_button)
+        submit_tweet_button.click()
+
+        # wait for the lightbox (x) to dissapear, to verify tweet sent ...
+        tweet_xbutton = self.driver.find_element(
+            By.XPATH, '//div[@aria-label="Close" and @role="button"]/div[@dir="auto"]')
+        WebDriverWait(self.driver, timeout=60).until(EC.staleness_of(tweet_xbutton))
+
+    @staticmethod
+    def truncate_tweet(tweet_text):
+        # scan the tweet and determine length including links, and truncate at the last word:
+        # all links are 23 chars long!
+        scan_position = 0
+        last_scanned_space = 0
+        tweet_limit = 240
+        effective_tweet_length = 0
+        link_prefixes = ('http://', 'https://')
+        max_prefix_length = max(map(lambda p: len(p), link_prefixes))
+        while scan_position <= len(tweet_text) and effective_tweet_length <= tweet_limit:
+            if tweet_text[scan_position].isspace():
+                last_scanned_space = scan_position
+                scan_position += 1
+                effective_tweet_length += 1
+                # try to scan consecutive spaces so we mark the leftmost last consecutive space:
+                while scan_position <= len(tweet_text) and effective_tweet_length <= tweet_limit:
+                    if tweet_text[scan_position].isspace():
+                        scan_position += 1
+                        effective_tweet_length += 1
+                    else:
+                        break
+            elif not tweet_text[scan_position].isspace():
+                # try to scan for links:
+                for prefix in link_prefixes:
+                    # we have a link, scan its entire length, but add only 23 to effective tweet length:
+                    if tweet_text[scan_position:scan_position+len(prefix)].startswith(prefix):
+                        while scan_position <= len(tweet_text) and effective_tweet_length <= tweet_limit:
+                            if tweet_text[scan_position].isspace():
+                                scan_position += 1
+                                effective_tweet_length += 23
+                                break
+                            elif not tweet_text[scan_position].isspace() and scan_position >= len(tweet_text):
+                                scan_position += 1
+                                effective_tweet_length += 23
+                                break
+                            else:
+                                scan_position += 1
+                        else:
+                            effective_tweet_length += 23
+                else:
+                    scan_position += 1
+                    effective_tweet_length += 1
+
+        # debug:
+        print("truncate_tweet: len(tweet_text) =", len(tweet_text))
+        print("truncate_tweet: scan_position =", scan_position)
+        print("truncate_tweet: effective_tweet_length =", effective_tweet_length)
+        print("truncate_tweet: last_scanned_space =", last_scanned_space)
+
+        if effective_tweet_length <= tweet_limit:
+            return tweet_text
+        elif last_scanned_space > 0:
+            # truncate at last word!
+            return tweet_text[:last_scanned_space]
+        else:
+            raise ValueError("Couldn't truncate body string for twitter!")
 
 
 class TwitterHandlerWebElements(ApplicationWebElements):

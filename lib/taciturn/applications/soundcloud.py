@@ -70,7 +70,12 @@ class SoundcloudHandler(FollowerApplicationHandler):
         self.action_timeout = self.config['app:soundcloud']['action_timeout']
         self.mutual_expire_hiatus = self.config['app:soundcloud']['mutual_expire_hiatus']
 
-        if self.config['selenium_webdriver'].endswith('_headless'):
+        if self.options.driver is not None:
+            if self.options.driver[0].endswith('_headless'):
+                self.headless_mode = True
+            else:
+                self.headless_mode = False
+        elif self.config['selenium_webdriver'].endswith('_headless'):
             self.headless_mode = True
         else:
             self.headless_mode = False
@@ -226,7 +231,7 @@ class SoundcloudHandler(FollowerApplicationHandler):
         # scan the header menu overhang:
         header_menu_offset = self.e.followers_header_overlap()
         # get the first follower entry:
-        follower_entry = self.e.get_first_follower_entry()
+        follower_entry = self.e.first_follower_entry()
         followed_count = 0
 
         while quota is None or followed_count < quota:
@@ -317,8 +322,12 @@ class SoundcloudHandler(FollowerApplicationHandler):
                     raise RuntimeError("Looks like following is blocked, stopping.")
                     # return followed_count
 
-                WebDriverWait(self.driver, timeout=90)\
-                    .until(lambda x: self.e.follower_button(follower_entry).text in BUTTON_TEXT_FOLLOWING)
+                try:
+                    WebDriverWait(self.driver, timeout=90)\
+                        .until(lambda x: self.e.follower_button(follower_entry).text in BUTTON_TEXT_FOLLOWING)
+                except TimeoutException:
+                    print("Follow not verified, apparently we're done.")
+                    return followed_count
 
                 print("Follow verified.")
 
@@ -350,23 +359,25 @@ class SoundcloudHandler(FollowerApplicationHandler):
                 return followed_count
 
             follower_entry = self.e.next_follower_entry(follower_entry)
-            sleep(3)
+            # sleep(3)
 
         return followed_count
 
     def start_unfollowing(self, quota=None, follow_back_hiatus=None, mutual_expire_hiatus=None):
         # print(" GET {}/{}/following".format(self.application_url, self.app_username))
         self.goto_following_page()
+        sleep(5)
 
-        following_entry = self.e.first_following_entry()
+        following_entry = self.e.first_follower_entry()
         print("following_entry =", following_entry)
         unfollow_count = 0
         follow_back_hiatus = follow_back_hiatus or self.follow_back_hiatus
         mutual_expire_hiatus = mutual_expire_hiatus or self.mutual_expire_hiatus
-        tab_overlap_y = self.e.followers_tab_overlap()
+        header_menu_offset = self.e.followers_header_overlap()
 
         while quota is None or quota > unfollow_count:
-            self.scrollto_element(following_entry, offset=tab_overlap_y)
+            self.scrollto_element(following_entry, offset=header_menu_offset)
+            sleep(0.1)
 
             following_username = self.e.follower_username(following_entry)
             print("Scanning {} ...".format(following_username))
@@ -404,47 +415,55 @@ class SoundcloudHandler(FollowerApplicationHandler):
                 continue
             # follow in db, check and delete, if now > then + hiatus time ...
             else:
-                follows_me = self.e.follower_follows_me(following_entry)
-                if (datetime.now() > following_db.established + follow_back_hiatus) or \
-                        (follows_me and datetime.now() > following_db.established + mutual_expire_hiatus):
-                    if follows_me:
-                        print("Mutual follow expired, unfollowing ...")
-                    else:
-                        print("Follow expired, unfollowing ...")
-                    list_following_button = self.e.follower_button(following_entry)
-                    list_following_button_text = list_following_button.text
-                    if list_following_button_text not in BUTTON_TEXT_FOLLOWING:
-                        raise AppUnexpectedStateException(
-                            "Unfollow button for '{}' says '{}'?".format(following_username,
-                                                                         list_following_button_text))
-                    list_following_button.click()
-                    lb_following_button = self.e.unfollow_lightbox_button()
-                    lb_following_button.click()
+                print("Checking if '{}' follows back in db ...".format(following_username))
+                follows_me = self.session.query(Follower).filter(
+                                                    and_(Follower.name == following_username,
+                                                         Follower.user_id == self.app_account.user_id,
+                                                         Follower.application_id == self.app_account.application_id,
+                                                         Application.name == self.application_name))\
+                                                    .one_or_none()
+
+                follow_back_expired = datetime.now() > following_db.established + follow_back_hiatus
+                mutual_follow_expired = datetime.now() > following_db.established + mutual_expire_hiatus
+
+                if not mutual_follow_expired and follows_me:
+                    time_remaining = (following_db.established + mutual_expire_hiatus) - datetime.now()
+                    print("Mutual expire hiatus not reached!  {} left!".format(time_remaining))
+                    if self.e.is_followers_end(following_entry):
+                        print("List end encountered, stopping.")
+                        return unfollow_count
+                    following_entry = self.e.next_follower_entry(following_entry)
+                    continue
+                elif not follow_back_expired:
+                    time_remaining = (following_db.established + follow_back_hiatus) - datetime.now()
+                    print("Follow hiatus not reached!  {} left!".format(time_remaining))
+                    if self.e.is_followers_end(following_entry):
+                        print("List end encountered, stopping.")
+                        return unfollow_count
+                    following_entry = self.e.next_follower_entry(following_entry)
+                    continue
 
                     # we need to wait and make sure button goes back to unfollowed state ...
+                try:
                     WebDriverWait(following_entry, 60).until(
                         lambda e: self.e.follower_button(e).text in BUTTON_TEXT_NOT_FOLLOWING)
+                except TimeoutException:
+                    print("Couldn't unfollow, apparently we're done.")
+                    return unfollow_count
 
-                    # create a new unfollow entry:
-                    new_unfollowed = Unfollowed(name=following_db.name,
-                                                established=datetime.now(),
-                                                user_id=following_db.user_id,
-                                                application_id=following_db.application_id)
+                # create a new unfollow entry:
+                new_unfollowed = Unfollowed(name=following_db.name,
+                                            established=datetime.now(),
+                                            user_id=following_db.user_id,
+                                            application_id=following_db.application_id)
 
-                    self.session.add(new_unfollowed)
-                    self.session.delete(following_db)
+                self.session.add(new_unfollowed)
+                self.session.delete(following_db)
 
-                    self.session.commit()
-                    unfollow_count += 1
+                self.session.commit()
+                unfollow_count += 1
 
-                    self.sleepmsrange(self.action_timeout)
-                else:
-                    if follows_me:
-                        time_remaining = (following_db.established + mutual_expire_hiatus) - datetime.now()
-                        print("Mutual expire hiatus not reached!  {} left!".format(time_remaining))
-                    else:
-                        time_remaining = (following_db.established + follow_back_hiatus) - datetime.now()
-                        print("Follow hiatus not reached!  {} left!".format(time_remaining))
+                self.sleepmsrange(self.action_timeout)
 
             if self.e.is_followers_end(following_entry):
                 print("List end encountered, stopping.")
@@ -456,7 +475,7 @@ class SoundcloudHandler(FollowerApplicationHandler):
 
         header_menu_offset = self.e.followers_header_overlap()
         # get the first follower entry:
-        follower_entry = self.e.get_first_follower_entry()
+        follower_entry = self.e.first_follower_entry()
         entries_added = 0
 
         while True:
@@ -465,19 +484,19 @@ class SoundcloudHandler(FollowerApplicationHandler):
             follower_username = self.e.follower_username(follower_entry)
             print("Scanning {} ...".format(follower_username))
 
-            following_db = self.session.query(Follower)\
-                                    .filter(and_(Follower.user_id == self.app_account.user_id,
-                                                 Follower.application_id == self.app_account.application_id,
-                                                 Follower.name == follower_username
+            following_db = self.session.query(Following)\
+                                    .filter(and_(Following.user_id == self.app_account.user_id,
+                                                 Following.application_id == self.app_account.application_id,
+                                                 Following.name == follower_username
                                             )).one_or_none()
 
             if following_db is None:
                 print("No entry for '{}', creating.".format(follower_username))
-                new_follower = Follower(name=follower_username,
-                                        established=datetime.now(),
-                                        application_id=self.app_account.application_id,
-                                        user_id=self.app_account.user_id)
-                self.session.add(new_follower)
+                new_following = Following(name=follower_username,
+                                          established=datetime.now(),
+                                          application_id=self.app_account.application_id,
+                                          user_id=self.app_account.user_id)
+                self.session.add(new_following)
                 self.session.commit()
                 entries_added += 1
 
@@ -496,7 +515,7 @@ class SoundcloudHandler(FollowerApplicationHandler):
 
         header_menu_offset = self.e.followers_header_overlap()
         # get the first follower entry:
-        follower_entry = self.e.get_first_follower_entry()
+        follower_entry = self.e.first_follower_entry()
         entries_added = 0
 
         while True:
@@ -506,19 +525,19 @@ class SoundcloudHandler(FollowerApplicationHandler):
 
             print("Scanning {} ...".format(entry_username))
 
-            following_db = self.session.query(Following)\
-                                    .filter(and_(Following.user_id == self.app_account.user_id,
-                                                 Following.application_id == self.app_account.application_id,
-                                                 Following.name == entry_username
+            following_db = self.session.query(Follower)\
+                                    .filter(and_(Follower.user_id == self.app_account.user_id,
+                                                 Follower.application_id == self.app_account.application_id,
+                                                 Follower.name == entry_username
                                             )).one_or_none()
 
             if following_db is None:
                 print("No entry for '{}', creating.".format(entry_username))
-                new_following = Following(name=entry_username,
-                                          established=datetime.now(),
-                                          application_id=self.app_account.application_id,
-                                          user_id=self.app_account.user_id)
-                self.session.add(new_following)
+                new_follower = Follower(name=entry_username,
+                                        established=datetime.now(),
+                                        application_id=self.app_account.application_id,
+                                        user_id=self.app_account.user_id)
+                self.session.add(new_follower)
                 self.session.commit()
                 entries_added += 1
 
@@ -561,7 +580,7 @@ class SoundcloudHandlerWebElements(ApplicationWebElements):
                 if try_n >= retries:
                     raise e
 
-    def get_first_follower_entry(self, retries=10):
+    def first_follower_entry(self, retries=10):
         # //*[@id="content"]/div/div/div[2]/div/div/ul/li[contains(@class, "badgeList__item")][1]
         for try_n in range(1, retries + 1):
             try:

@@ -42,7 +42,7 @@ default_config = {
 
     'day_length': datetime.timedelta(hours=8),
 
-    # selenium webdriver type:  'htmlunit', 'htmlunitjs', 'chrome', 'chrome_headless', 'firefox'
+    # selenium webdriver type:  'htmlunit', 'htmlunitjs', 'chrome', 'chrome_headless', 'firefox', 'firefox_headless'
     'selenium_webdriver': 'chrome_headless',
 
     'app:*': {
@@ -76,7 +76,10 @@ default_config = {
         'daily_max_follows': 400,
         'round_max_follows': 40,
         'daily_max_unfollows': 40,
-        'round_max_unfollows': 40
+        'round_max_unfollows': 40,
+
+        'action_timeout': (1000 * 5, 1000 * 30),
+
     }
 }
 

@@ -16,10 +16,20 @@
 
 
 from selenium.webdriver.common.by import By
-from selenium.common.exceptions import TimeoutException, NoSuchElementException, StaleElementReferenceException
+
+from selenium.common.exceptions import (
+    TimeoutException,
+    NoSuchElementException,
+    StaleElementReferenceException,
+    InvalidSessionIdException,
+    WebDriverException
+)
+
 from selenium.webdriver.support.ui import WebDriverWait
 
 from sqlalchemy import and_
+
+import instabot
 
 from taciturn.applications.base import (
     FollowerApplicationHandler,
@@ -82,10 +92,16 @@ class InstagramHandler(FollowerApplicationHandler):
         self.driver.get("{}/{}/".format(self.application_url, self.app_username))
 
     def login(self):
-        # press login button:
-        first_login_button = self.driver.find_element(
-                By.XPATH, '//*[@id="react-root"]/section/main/article/div/div/div/div[2]/button')
-        first_login_button.click()
+        # press login button, if present:
+        try:
+            self.driver.implicitly_wait(10)
+            first_login_button = self.driver.find_element(
+                    By.XPATH, '//*[@id="react-root"]/section/main/article/div/div/div/div[2]/button')
+            first_login_button.click()
+        except (NoSuchElementException):
+            pass
+        finally:
+            self.driver.implicitly_wait(self.implicit_default_wait)
 
         # enter username and password:
 
@@ -135,14 +151,8 @@ class InstagramHandler(FollowerApplicationHandler):
         finally:
             self.driver.implicitly_wait(self.implicit_default_wait)
 
-        # verify that the main section exists, and contains a link with our username:
-
-        instagram_header_img = self.driver.find_element(By.XPATH,
-                                                        '//*[@id="react-root"]/section/nav[1]'
-                                                        '/div/div/header/div/h1/div/a/img')
-
-        if instagram_header_img.get_attribute('alt') != 'Instagram':
-            raise AppLoginException("Could not login!")
+        # verify that the instagram header image exists:
+        self.e.instagram_header_img()
 
         return True
 
@@ -781,11 +791,101 @@ class InstagramHandler(FollowerApplicationHandler):
 
         # return entries_added
 
+    def api_post_image(self, image_filename, post_body):
+        instagram_bot = instabot.Bot()
+        instagram_bot.login(username=self.app_username, password=self.app_password)
+
+        return instagram_bot.upload_photo(image_filename, caption=post_body)
+
+    def post_image(self, image_filename, post_body, retries=10):
+        # here, we have to set the input form to image_filename, then click submit ...
+
+        for try_n in range(1, retries+1):
+            self.goto_homepage()
+
+            try:
+                self.driver.implicitly_wait(5)
+                form_element = self.driver.find_element(By.XPATH, '(//form[@role="presentation" and @method="POST"])[1]')
+                image_input = self.driver.find_element(By.XPATH, './/input')
+                image_input.send_keys(image_filename)
+
+                print("Submitting image ...")
+
+                # click the button, but then make sure main window is in Selenium focus ...
+                image_submit_button = self.driver.find_element(
+                    By.XPATH, '//div[@data-testid="new-post-button"]')
+                image_submit_button.click()
+                self.driver.execute_script('window.focus();')
+                self.driver.switch_to.default_content()
+
+                # try to submit the form via javascript ...
+                # self.driver.execute_script('arguments[0].submit();', form_element)
+
+                # image_button = self.driver.find_element(
+                #    By.XPATH, '//div[@data-testid="new-post-button" and @role="menuitem"]')
+                #  image_button.click()
+            except (NoSuchElementException, StaleElementReferenceException) as e:
+                print("Exception (1): ", e)
+                if try_n == retries:
+                    raise e
+                continue
+            finally:
+                self.driver.implicitly_wait(self.implicit_default_wait)
+
+            # XXX I do want to click the resize button, if present!
+            try:
+                self.driver.implicitly_wait(0)
+                expand_button = self.driver.find_element(
+                    By.XPATH, '//button/span[contains(@class, "createSpriteExpand") and text()="Expand"]')
+                self.scrollto_element(expand_button)
+                expand_button.click()
+            except NoSuchElementException as e:
+                print("Exception (2): ", e)
+                pass
+            finally:
+                self.driver.implicitly_wait(self.implicit_default_wait)
+
+            try:
+                self.driver.implicitly_wait(5)
+                next_button = self.driver.find_element(By.XPATH, '//button[text() = "Next"]')
+                next_button.click()
+
+                caption_input = self.driver.find_element(By.XPATH, '//textarea[@aria-label="Write a caption…"]')
+                caption_input.send_keys(post_body)
+            except (NoSuchElementException, StaleElementReferenceException) as e:
+                print("Exception (3): ", e)
+                if try_n == retries:
+                    raise e
+                continue
+            finally:
+                self.driver.implicitly_wait(self.implicit_default_wait)
+
+            try:
+                self.driver.implicitly_wait(5)
+
+                share_button = self.driver.find_element(By.XPATH, '//button[text() = "Share"]')
+                share_button.click()
+                # wait for the header image to be present, to verify submission ...
+                self.e.instagram_header_img()
+                break
+            except (NoSuchElementException, StaleElementReferenceException) as e:
+                print("Exception (4): ", e)
+                if try_n == retries:
+                    raise e
+                continue
+            finally:
+                self.driver.implicitly_wait(self.implicit_default_wait)
+
 
 class InstagramHandlerWebElements(ApplicationWebElements):
     # follower_xpath_prefix = '//div[@role="dialog"]/div/div[2]/ul/div'
     _followers_lighbox_prefix = '//div[@role="presentation"]/div[@role="dialog"]'
     implicit_default_wait = 60
+
+    def instagram_header_img(self):
+        return self.driver.find_element(By.XPATH,
+                                        '//*[@id="react-root"]/section/nav[1]'
+                                        '/div/div/header/div/h1/div/a/img[@alt="Instagram"]')
 
     def followers_lightbox(self):
         return self.driver.find_element(By.XPATH, self._followers_lighbox_prefix)
