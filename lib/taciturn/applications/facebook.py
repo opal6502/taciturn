@@ -188,7 +188,8 @@ class FacebookHandlerWebElements(ApplicationWebElements):
         # //div[@role="textbox" and @contenteditable="true"]/div[@data-contents="true"]/div[@data-block="true"]/div/span/br[@data-text="true"]
         # '(//div[@role="dialog"])[2]//div[@role="textbox" and @contenteditable="true"]'
         return self.driver.find_element(
-            By.XPATH, '(//div[@role="dialog"])[1]//div[@role="textbox" and @contenteditable="true"]')
+            By.XPATH, '(//div[@role="dialog"])[1]//div[@role="textbox" and @contenteditable="true"] | '
+                      '(//div[@role="dialog"])[2]//div[@role="textbox" and @contenteditable="true"]')
         # return self.driver.find_element(
         #     By.XPATH, '//div[starts-with(text(),"Write something")]/../..'
         #               '//div[@role="textbox" and @contenteditable="true"]')
@@ -210,7 +211,7 @@ class FacebookHandlerWebElements(ApplicationWebElements):
         return self.driver.find_element(
             By.XPATH, '//div[@aria-label="Remove post attachment"]/i')
 
-    def page_post_link_image(self, link_domain, retries=10):
+    def page_post_link_image(self, link_domain, retries=20):
         # html of post image in preview:
         # <img height="261" width="500" alt="Schlake Opus (track), by Anvil Mesa"
         # class="i09qtzwb n7fi1qx3 datstx6m pmk7jnqg j9ispegn kr520xx4 k4urcfbm bixrwtb6"
@@ -287,7 +288,7 @@ class FacebookHandlerWebElements(ApplicationWebElements):
                 offset = self.page_admin_overhang_bottom()
                 self.driver.execute_script("arguments[0].scrollIntoView();", page_post)
                 scroll_position = self.driver.execute_script("return document.documentElement.scrollTop;")
-                self.driver.execute_script("window.scrollTo(0, arguments[0]);", scroll_position - offset)
+                self.driver.execute_script("window.scrollTo(0, arguments[0]);", scroll_position - (offset+60))
 
                 if try_n == retries:
                     raise e

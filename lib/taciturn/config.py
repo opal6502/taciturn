@@ -47,7 +47,7 @@ default_config = {
 
     'app:*': {
         'daily_max_follows': 400,
-        'round_max_follows': 10,
+        'round_max_follows': 40,
         'daily_max_unfollows': 400,
         'round_max_unfollows': 40,
 
@@ -63,7 +63,7 @@ default_config = {
     },
     'app:instagram': {
         'daily_max_follows': 400,
-        'round_max_follows': 10
+        'round_max_follows': 20
     },
     'app:youtube': {
         'video_watch_timeout': (2*60, 5*60),

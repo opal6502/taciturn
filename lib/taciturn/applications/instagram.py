@@ -15,6 +15,7 @@
 # along with Tactiurn.  If not, see <https://www.gnu.org/licenses/>.
 
 
+from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
 
 from selenium.common.exceptions import (
@@ -28,8 +29,6 @@ from selenium.common.exceptions import (
 from selenium.webdriver.support.ui import WebDriverWait
 
 from sqlalchemy import and_
-
-import instabot
 
 from taciturn.applications.base import (
     FollowerApplicationHandler,
@@ -282,7 +281,7 @@ class InstagramHandler(FollowerApplicationHandler):
                 # if we find a record, it's contradicting what twitter is telling us, so delete it:
                 # XXX this probably means a locked account has refused our request, and we should
                 # add it to unfollowed for a long timeout ...
-                if already_following is not None:
+                if already_following is not None and unfollowed is None:
                     print("Warning: user '{}' already recorded as following?"
                           "  Moving record to unfollowed.".format(entry_username))
                     new_unfollowed = Unfollowed(name=already_following.name,
@@ -791,20 +790,14 @@ class InstagramHandler(FollowerApplicationHandler):
 
         # return entries_added
 
-    def api_post_image(self, image_filename, post_body):
-        instagram_bot = instabot.Bot()
-        instagram_bot.login(username=self.app_username, password=self.app_password)
-
-        return instagram_bot.upload_photo(image_filename, caption=post_body)
-
-    def post_image(self, image_filename, post_body, retries=10):
+    def post_image(self, image_filename, post_body, retries=20):
         # here, we have to set the input form to image_filename, then click submit ...
 
         for try_n in range(1, retries+1):
             self.goto_homepage()
 
             try:
-                self.driver.implicitly_wait(5)
+                self.driver.implicitly_wait(10)
                 form_element = self.driver.find_element(By.XPATH, '(//form[@role="presentation" and @method="POST"])[1]')
                 image_input = self.driver.find_element(By.XPATH, './/input')
                 image_input.send_keys(image_filename)
@@ -815,15 +808,10 @@ class InstagramHandler(FollowerApplicationHandler):
                 image_submit_button = self.driver.find_element(
                     By.XPATH, '//div[@data-testid="new-post-button"]')
                 image_submit_button.click()
-                self.driver.execute_script('window.focus();')
-                self.driver.switch_to.default_content()
 
-                # try to submit the form via javascript ...
-                # self.driver.execute_script('arguments[0].submit();', form_element)
+                # Experiment, try waiting for the Next link before continuing ...
+                self.driver.find_element(By.XPATH, '//button[text() = "Next"]')
 
-                # image_button = self.driver.find_element(
-                #    By.XPATH, '//div[@data-testid="new-post-button" and @role="menuitem"]')
-                #  image_button.click()
             except (NoSuchElementException, StaleElementReferenceException) as e:
                 print("Exception (1): ", e)
                 if try_n == retries:
