@@ -126,7 +126,7 @@ class TwitterHandler(FollowerApplicationHandler):
         # self.e.followers_tab_link()
         tab_overlap_y = self.e.followers_tab_overlap()
 
-        unfollow_hiatus = unfollow_hiatus or self.follow_back_hiatus
+        unfollow_hiatus = unfollow_hiatus or self.unfollow_hiatus
         # max_scan_count = 10
         followed_count = 0
 
@@ -202,7 +202,6 @@ class TwitterHandler(FollowerApplicationHandler):
                 if already_following is not None:
                     print("Warning: not followed user '{}' already recorded as following?"
                           "  Moving to unfollowed.".format(entry_username))
-                    self.session.delete(already_following)
 
                     new_unfollowed = Unfollowed(name=already_following.name,
                                                 established=datetime.now(),

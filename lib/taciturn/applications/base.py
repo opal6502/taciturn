@@ -26,6 +26,12 @@ from taciturn.db.base import (
     Blacklist
 )
 
+from taciturn.db.followers import (
+    Follower,
+    Following,
+    Unfollowed
+)
+
 from taciturn.config import load_config
 
 # Selenium automation:
@@ -44,9 +50,9 @@ from io import BytesIO
 
 import os
 import time
-import datetime
 import random
 import numbers
+from datetime import datetime
 from hashlib import sha256
 from http.cookiejar import MozillaCookieJar
 
@@ -220,7 +226,7 @@ class BaseApplicationHandler(ABC):
         if prefix is None:
             prefix = self.application_name+'-'
 
-        file_name = prefix + sha256(str(datetime.datetime.now()).encode('utf-8')).hexdigest()+file_extension
+        file_name = prefix + sha256(str(datetime.now()).encode('utf-8')).hexdigest()+file_extension
         local_file_name = os.path.join(self.assets_dir, 'application', self.application_name, file_name)
 
         image_request = requests.get(image_url, stream=True)
@@ -305,12 +311,12 @@ class FollowerApplicationHandler(BaseApplicationHandler):
     @abstractmethod
     def start_following(self, target_account, quota=None, unfollow_hiatus=None):
         "start following the followers of target_account"
-        raise NotImplementedError
+        pass
 
     @abstractmethod
     def update_followers(self):
         "scan our followers, and update the database, new follower timestamp is when this method scans a new follower!"
-        raise NotImplementedError
+        pass
 
     @abstractmethod
     def update_following(self):
@@ -320,8 +326,201 @@ class FollowerApplicationHandler(BaseApplicationHandler):
     @abstractmethod
     def start_unfollowing(self, quota=None, follow_back_hiatus=None):
         "scan followers, and unfollow accounts that we've been following for a time, and don't follow us back!"
-        raise NotImplementedError
+        pass
 
+    # Application-specific goto-page methods:
+
+    @abstractmethod
+    def goto_following_page(self, target_account):
+        "goto target_account's following page"
+        pass
+
+    @abstractmethod
+    def goto_followers_page(self, target_account):
+        "goto target_account's followers page"
+        pass
+
+    # Database methods for FollowerApplicationHandler:
+
+    def db_get_unfollowed(self, flist_username):
+        return self.session.query(Unfollowed) \
+                .filter(and_(Unfollowed.name == flist_username,
+                             Unfollowed.user_id == self.app_account.user_id,
+                             Unfollowed.application_id == self.app_account.application_id,
+                        )).one_or_none()
+
+    def db_get_follower(self, flist_username):
+        return self.session.query(Follower)\
+                .filter(and_(Follower.name == flist_username,
+                             Follower.user_id == self.app_account.user_id,
+                             Follower.application_id == self.app_account.application_id,
+                        )).one_or_none()
+
+    def db_get_following(self, flist_username):
+        return self.session.query(Follower)\
+                .filter(and_(Follower.name == flist_username,
+                             Follower.user_id == self.app_account.user_id,
+                             Follower.application_id == self.app_account.application_id,
+                        )).one_or_none()
+
+    def db_new_following(self, flist_username):
+        return Following(name=flist_username,
+                         established=datetime.now(),
+                         application_id=self.app_account.application_id,
+                         user_id=self.app_account.user_id)
+
+    def db_new_unfollowed(self, flist_username):
+        return Unfollowed(name=flist_username,
+                          established=datetime.now(),
+                          application_id=self.app_account.application_id,
+                          user_id=self.app_account.user_id)
+
+    # Follower list 'flist' processing methods:
+
+    @abstractmethod
+    def flist_first(self):
+        "get the first flist entry in an flist"
+        pass
+
+    @abstractmethod
+    def flist_next(self, flist_entry):
+        "get the next flist entry after flist_entry"
+        pass
+
+    @abstractmethod
+    def flist_is_last(self, flist_entry):
+        "return true if flist_entry is the last in the list"
+        pass
+
+    @abstractmethod
+    def flist_is_empty(self, flist_entry):
+        "return true if flist_entry is empty, used by twitter as end of list"
+        pass
+
+    @abstractmethod
+    def flist_username(self, flist_entry):
+        "returns the username text for flist_entry"
+        pass
+
+    @abstractmethod
+    def flist_image_url(self, flist_entry):
+        "returns the <img src='...'> link text for flist_entry"
+        pass
+
+    @abstractmethod
+    def flist_button(self, flist_entry):
+        "returns the button element for flist_entry"
+        pass
+
+    @abstractmethod
+    def flist_button_is_following(self, flist_entry):
+        "used to wait and verify that flist_entry's button text reflects an application-specific following state"
+        pass
+
+    @abstractmethod
+    def flist_button_is_not_following(self, flist_entry):
+        "used to wait and verify that flist_entry's button text reflects an application-specific non-following state"
+        pass
+
+    @abstractmethod
+    def flist_header_overlap_y(self):
+        "returns the overlap y dimension of any elements overlapping the flist"
+        pass
+
+    @abstractmethod
+    def flist_is_blocked(self):
+        "check if there's a notification that our follow request was blocked"
+        pass
+
+    @abstractmethod
+    def flist_is_follow_limit(self):
+        "check if there'a a notification that our account cannot follow now"
+        pass
+
+
+    def general_start_following(self, target_account, quota=None, unfollow_hiatus=None):
+        "A generalized start_following method, made to be application-agnostic."
+        self.goto_following_page(target_account)
+
+        unfollow_hiatus = unfollow_hiatus or self.unfollow_hiatus
+        header_overlap_y = self.flist_header_overlap_y()
+        flist_entry = self.flist_first()
+        following_count = 0
+
+        while quota is None or following_count < quota:
+            self.scrollto_element(flist_entry, offset=header_overlap_y)
+
+            # twitter end-of-list detection, other applications should always return true:
+            if self.flist_is_empty(flist_entry):
+                return following_count
+
+            # get flist info fields, skipping where possible:
+
+            flist_username = self.flist_username(flist_entry)
+            if self.in_blacklist(flist_username):
+                print("{} is in blacklist, skip ...")
+                flist_entry = self.e.flist_next(flist_entry)
+                continue
+
+            flist_button = self.flist_button(flist_entry)
+            flist_button_text = flist_button.text
+            if self.flist_button_is_following(flist_button_text):
+                print("Already following {}, skip ...")
+                flist_entry = self.e.flist_next(flist_entry)
+                continue
+
+            flist_image_src = self.flist_image_url(flist_entry)
+            if self.is_default_image(flist_image_src):
+                print("{} has no image, skip ...")
+                flist_entry = self.e.flist_next(flist_entry)
+                continue
+
+            flist_unfollowed_row = self.db_get_unfollowed(flist_username)
+            is_hiatus_expired = flist_unfollowed_row is not None \
+                                and datetime.now() < flist_unfollowed_row.established + unfollow_hiatus
+            if is_hiatus_expired:
+                time_remaining = (flist_unfollowed_row.established + unfollow_hiatus) - datetime.now()
+                print("Followed/unfollowed too recently, can follow again after", time_remaining)
+                flist_entry = self.e.flist_next(flist_entry)
+                continue
+
+            # skip checks complete, now try to follow:
+
+            if self.flist_button_is_not_following(flist_button_text):
+                # check to see if we're already following this user in the db:
+                # if it's already there, it's a good idea to put it in the unfollowed
+                # list, because apparently we followed/unfollowed recently without
+                # properly recording it?
+                flist_following_row = self.db_get_following(flist_username)
+                if flist_following_row is not None:
+                    new_unfollowed_row = self.db_new_unfollowed(flist_username)
+
+                    self.session.add(new_unfollowed_row)
+                    self.session.delete(flist_following_row)
+                    self.session.commit()
+
+                    flist_entry = self.e.flist_next(flist_entry)
+                    continue
+
+                # ok, try clicking follow button ...
+                flist_button.click()
+
+                # check for follower fail conditions ...
+
+                # check if there's a follow limit notification:
+                if self.flist_is_blocked():
+                    print("User {} blocks us, skipping ...".format(flist_username))
+                    flist_entry = self.e.flist_next(flist_entry)
+                    continue
+
+                if self.flist_is_follow_limit():
+                    print("Follow limit encountered, stopping.")
+                    return following_count
+
+                # verify that follow button indicates success:
+                if not self.flist_button_is_following(flist_entry):
+                    print("Couldn't follow, application limit probably hit, stopping.")
+                    return following_count
 
 # app state exceptions:
 
