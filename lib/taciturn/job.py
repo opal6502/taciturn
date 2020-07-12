@@ -17,17 +17,18 @@
 
 # interface to taciturn jobs!
 
-from abc import ABC, abstractmethod
-import os, glob
 from importlib.machinery import SourceFileLoader
+from abc import ABC, abstractmethod
+import os
 
-from taciturn.db.base import ORMBase
 from taciturn.config import load_config
-
 from taciturn.db.base import User, Application, AppAccount
 
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
+
+from datetime import timedelta
+from time import sleep, time
 
 
 class TaciturnJob(ABC):
@@ -46,6 +47,8 @@ class TaciturnJob(ABC):
         else:
             raise TypeError("No 'database_engine' provided by config!")
 
+        self.load_accounts()
+
     def load_accounts(self):
         for app_name in self.appnames:
             app_account = self.session.query(AppAccount).\
@@ -63,7 +66,7 @@ class TaciturnJob(ABC):
         try:
             return self.accounts[app_name]
         except KeyError:
-            raise RuntimeError("Error: no account for app '{}' loaded.".format(app_name))
+            raise TaciturnJobNoAccountException("Error: no account for app '{}' loaded.".format(app_name))
 
     @abstractmethod
     def run(self):
@@ -105,6 +108,79 @@ class TaciturnJobLoader:
         if not isinstance(job_module.job, TaciturnJob):
             raise TypeError("'job' object is not type TaciturnJob in file: {}".format(job_full_name))
         return job_module.job
+
+
+class TaskExecutor:
+    def __init__(self, call=None, name=None, quota=None, max=None, period=None, retries=5, stop_no_quota=False):
+        self.call=call
+        self.name=name
+        self.quota=quota
+        self.max=max
+        self.period=None
+        self.retries=retries or 1
+        self.stop_no_quota = stop_no_quota
+
+        self.total_time = 0
+        self.operations_total = 0
+        self.failed_rounds = 0
+
+        self.start_epoch = None
+
+    def run(self):
+        total_rounds = self.quota // self.max
+        task_timeout = self.period.total_seconds() / total_rounds
+
+        for round_n in range(1, total_rounds+1):
+            operation_count = 0
+            task_start_epoch = time()
+
+            for try_n in range(1, self.retries+1):
+                try:
+                    operation_count = self.call()
+                except Exception as e:
+                    print('Task {}: Round {} of {} failed, try {} of {}; exception occurred: {}'
+                            .format(self.name, round_n, total_rounds, self.name, try_n, self.retries, e))
+                    if try_n >= self.retries:
+                        raise e
+                else:
+                    break
+            else:
+                print('Task {}: Round {} of {} failed after {} tries.'
+                        .format(self.name, round_n, total_rounds, try_n))
+                self.failed_rounds += 1
+
+            task_time = time() - task_start_epoch
+            task_sleep_time = task_timeout - task_time
+            if task_sleep_time < 0:
+                task_sleep_time = 0
+
+            self.total_time += task_time
+            self.operations_total += operation_count
+
+            if operation_count < self.quota:
+                print('Task {}: couldn\'t fulfill quota; expected {} operations, actual {}'
+                        .format(self.name, self.quota, operation_count))
+                if self.stop_no_quota:
+                    print('Quota unfulfilled, stopping.')
+                    break
+            elif operation_count == self.max:
+                print('Task {}: round complete with {} operations.'
+                        .format(self.name, operation_count))
+
+            # last round, no need to sleep:
+            if round_n >= total_rounds or self.operations_total >= self.max:
+                break
+
+            print('Task {}: sleeping for {} until next round.'
+                    .format(self.name, timedelta(seconds=task_sleep_time)))
+            sleep(task_sleep_time)
+
+        print('Task {}: ran {} rounds, {} operations, {} rounds_failed'
+                 .format(self.name, total_rounds, self.operations_total, self.failed_rounds))
+        print('Task {}: total time: {}'
+                 .format(self.name, timedelta(seconds=self.total_time)))
+        print('Task {}: complete'
+                 .format(self.name))
 
 
 class TaciturnJobException(Exception):

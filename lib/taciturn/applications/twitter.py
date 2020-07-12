@@ -562,6 +562,95 @@ class TwitterHandler(FollowerApplicationHandler):
         else:
             raise ValueError("Couldn't truncate body string for twitter!")
 
+    # XXX NEW 0.2a flist METHODS!
+
+    def flist_first(self, flist_name='Following'):
+        super().flist_first(flist_name)
+        locator = (By.XPATH, '//section[starts-with(@aria-labelledby, "accessible-list-")]'
+                             '/div[@aria-label="Timeline: {}"]/div/div/div[1]'.format(flist_name))
+        return self.new_wait().until(EC.presence_of_element_located(locator))
+
+    def flist_next(self, flist_entry):
+        locator = (By.XPATH, './following-sibling::div[1]')
+        return self.new_wait(flist_entry).until(EC.presence_of_element_located(locator))
+
+    def flist_is_last(self, flist_entry):
+        return False
+
+    def flist_is_empty(self, flist_entry):
+        # need to thoroughly check for absence of a proper entry, here we check by username ...
+        username_locator = self._flist_username_locator()
+        try:
+            self.new_wait(flist_entry, timeout=10)\
+                .until(EC.presence_of_element_located(username_locator))
+            return False
+        except TimeoutException as e:
+            pass
+        # then, try to check for an empty node, will raise TimeoutException if not found:
+        empty_locator = (By.XPATH, './div/div[not(node())]')
+        self.new_wait(timeout=30)\
+                .until(EC.presence_of_element_located(empty_locator))
+        return True
+
+    def flist_username(self, flist_entry):
+        locator = self._flist_username_locator()
+        return self.new_wait(flist_entry).until(EC.presence_of_element_located(locator))
+
+    def _flist_username_locator(self):
+        return (By.XPATH, './div/div/div/div[2]/div/div[1]/a/div/div[2]/div/span[starts-with(text(), "@")] | '
+                     './div/div/div/div[2]/div/div[1]/a/div/div/div[1]/span/span[starts-with(text(), "@")]')
+
+    def flist_image_is_default(self, flist_entry):
+        locator = (By.XPATH, './div/div/div/div[1]/div/a/div[1]/div[2]/div/img')
+        image_src = self.new_wait(flist_entry).until(EC.presence_of_element_located(locator)).get_attribute('src')
+        return self.is_default_image(image_src)
+
+    def flist_is_verified(self, flist_entry):
+        locator = (By.XPATH, './div/div/div/div[2]/div[1]/div[1]/a/div/div[1]/div[2]/'
+                             '*[local-name() = "svg" and @aria-label="Verified account"]')
+        try:
+            self.new_wait(timeout=0).until(EC.presence_of_element_located(locator))
+            return True
+        except TimeoutException:
+            return False
+
+    def flist_button(self, flist_entry):
+        locator = (By.XPATH, './div/div/div/div[2]/div/div[2]/div/div/span/span')
+        return self.new_wait(flist_entry).until(EC.presence_of_element_located(locator))
+
+    def flist_button_is_following(self, flist_button_text):
+        return flist_button_text in BUTTON_TEXT_FOLLOWING
+
+    def flist_button_is_not_following(self, flist_button_text):
+        return flist_button_text in BUTTON_TEXT_NOT_FOLLOWING
+
+    def flist_header_overlap_y(self):
+        header_locator = (By.XPATH, '(//div[@data-testid="primaryColumn"]/div/div)[1]')
+        header_element = self.new_wait().until(EC.presence_of_element_located(header_locator))
+        return header_element.size['height']
+
+    def flist_is_blocked_notice(self):
+        popover = self._bottom_notify_popover()
+        popover_text = popover.text
+        if popover_text is not None and popover_text == 'You have been blocked from following this user at their request.':
+            # halt and wait until the blocked notice disappers, so it doesn't confuse us later:
+            self.new_wait().until(EC.staleness_of(popover))
+            return True
+        return False
+
+    def flist_is_follow_limit_notice(self):
+        popover_text = self._bottom_notify_popover().text
+        if popover_text is not None and popover_text == 'You are unable to follow more people at this time.':
+            return True
+        return False
+
+    def _bottom_notify_popover(self):
+        locator = (By.XPATH, '//*[@id="react-root"]/div/div/div[1]/div[2]/div/div/div[1]/span')
+        try:
+            return self.new_wait(timeout=0).until(EC.presence_of_element_located(locator))
+        except TimeoutException:
+            return None
+
 
 class TwitterHandlerWebElements(ApplicationWebElements):
     # //*[@id="react-root"]/div/div/div[2]/main/div/div/div/div[1]/div/div[2]/section/div/div/div/div[N]

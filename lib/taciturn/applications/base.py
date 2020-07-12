@@ -35,8 +35,10 @@ from taciturn.db.followers import (
 from taciturn.config import load_config
 
 # Selenium automation:
+from selenium.common.exceptions import TimeoutException, NoSuchElementException, StaleElementReferenceException
 from selenium.webdriver import Chrome, Firefox, Remote
 from selenium import webdriver
+from selenium.webdriver.support.ui import WebDriverWait
 
 # base class abstraction:
 from abc import ABC
@@ -293,6 +295,15 @@ class BaseApplicationHandler(ABC):
     def app_asset_prefix(self):
         return os.path.join(self.assets_dir, self.application_asset_dirname)
 
+    def new_wait(self, driver=None, timeout=60, ignored_exceptions=None):
+        if driver is None:
+            driver = self.driver
+        if ignored_exceptions is None:
+            ignored_exceptions = [StaleElementReferenceException, NoSuchElementException]
+        return WebDriverWait(driver,
+                             timeout=timeout,
+                             ignored_exceptions=ignored_exceptions)
+
 
 class ApplicationWebElements(ABC):
     """Container that wraps webelement selectors in methods!
@@ -378,9 +389,12 @@ class FollowerApplicationHandler(BaseApplicationHandler):
     # Follower list 'flist' processing methods:
 
     @abstractmethod
-    def flist_first(self):
+    def flist_first(self, flist_name=None):
         "get the first flist entry in an flist"
-        pass
+        # input validation:
+        flist_choices = ('Followers', 'Following')
+        if flist_name not in flist_choices:
+            raise TypeError("flist_name choice not one of {}".format(', '.join(flist_choices)))
 
     @abstractmethod
     def flist_next(self, flist_entry):
@@ -403,8 +417,13 @@ class FollowerApplicationHandler(BaseApplicationHandler):
         pass
 
     @abstractmethod
-    def flist_image_url(self, flist_entry):
-        "returns the <img src='...'> link text for flist_entry"
+    def flist_image_is_default(self, flist_entry):
+        "returns true/false if the image is default"
+        pass
+
+    @abstractmethod
+    def flist_is_verified(self, flist_entry):
+        "returns true/false if the entry has a verified tag"
         pass
 
     @abstractmethod
@@ -413,12 +432,12 @@ class FollowerApplicationHandler(BaseApplicationHandler):
         pass
 
     @abstractmethod
-    def flist_button_is_following(self, flist_entry):
+    def flist_button_is_following(self, flist_button_text):
         "used to wait and verify that flist_entry's button text reflects an application-specific following state"
         pass
 
     @abstractmethod
-    def flist_button_is_not_following(self, flist_entry):
+    def flist_button_is_not_following(self, flist_button_text):
         "used to wait and verify that flist_entry's button text reflects an application-specific non-following state"
         pass
 
@@ -428,15 +447,14 @@ class FollowerApplicationHandler(BaseApplicationHandler):
         pass
 
     @abstractmethod
-    def flist_is_blocked(self):
+    def flist_is_blocked_notice(self):
         "check if there's a notification that our follow request was blocked"
         pass
 
     @abstractmethod
-    def flist_is_follow_limit(self):
+    def flist_is_follow_limit_notice(self):
         "check if there'a a notification that our account cannot follow now"
         pass
-
 
     def general_start_following(self, target_account, quota=None, unfollow_hiatus=None):
         "A generalized start_following method, made to be application-agnostic."
@@ -518,9 +536,41 @@ class FollowerApplicationHandler(BaseApplicationHandler):
                     return following_count
 
                 # verify that follow button indicates success:
-                if not self.flist_button_is_following(flist_entry):
+                if not self.flist_button_is_following(flist_button_text):
                     print("Couldn't follow, application limit probably hit, stopping.")
                     return following_count
+
+                # follow verified, create database entry:
+
+                new_following_row = self.db_new_following(flist_username)
+
+                # if there was an unfollowed entry, remove it now:
+                if flist_unfollowed_row is not None:
+                    self.session.delete(flist_unfollowed_row)
+
+                self.session.add(new_following_row)
+                self.session.commit()
+                print("Follow added to database.")
+
+                following_count += 1
+
+                self.sleepmsrange(self.action_timeout)
+
+            elif self.flist_button_is_following(flist_button_text):
+                # make sure following entry is in the database ...
+                already_following_row = self.db_get_following(flist_username)
+                if already_following_row is None:
+                    new_following_row = self.db_new_following(flist_username)
+                    self.session.add(new_following_row)
+                    self.session.commit()
+            else:
+                raise AppUnexpectedStateException(
+                    "Entry button for '{}' says '{}'?".format(flist_username, flist_button_text))
+
+            flist_entry = self.e.next_follower_entry(flist_entry)
+
+        return following_count
+
 
 # app state exceptions:
 
