@@ -18,10 +18,10 @@
 # environment for running Taciturn stuff!
 
 WEBDRIVER_BIN=/Users/johnk/bin
-PYTHON_LIB_PREFIX=/Users/johnk/PycharmProjects/Taciturn/Taciturn/lib
+PYTHON_LIB_PREFIX=/Users/johnk/opt/taciturn/lib
 FIREFOX_DRIVER=$WEBDRIVER_BIN/geckodriver
 CHROME_DRIVER=$WEBDRIVER_BIN/chromedriver
-TACITURN_ROOT=/Users/johnk/PycharmProjects/Taciturn/Taciturn
+TACITURN_ROOT=/Users/johnk/opt/taciturn
 
 if [[ ! -z "$WEBDRIVER_BIN" ]]; then
   echo "Adding webdriver path '$WEBDRIVER_BIN' to path."

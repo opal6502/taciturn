@@ -840,6 +840,9 @@ class InstagramHandler(FollowerApplicationHandler):
 
                 caption_input = self.driver.find_element(By.XPATH, '//textarea[@aria-label="Write a caption…"]')
                 caption_input.send_keys(post_body)
+
+                share_button = self.driver.find_element(By.XPATH, '//button[text() = "Share"]')
+                share_button.click()
             except (NoSuchElementException, StaleElementReferenceException) as e:
                 print("Exception (3): ", e)
                 if try_n == retries:
@@ -849,10 +852,7 @@ class InstagramHandler(FollowerApplicationHandler):
                 self.driver.implicitly_wait(self.implicit_default_wait)
 
             try:
-                self.driver.implicitly_wait(5)
-
-                share_button = self.driver.find_element(By.XPATH, '//button[text() = "Share"]')
-                share_button.click()
+                self.driver.implicitly_wait(30)
                 # wait for the header image to be present, to verify submission ...
                 self.e.instagram_header_img()
                 break
