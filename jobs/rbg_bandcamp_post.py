@@ -90,7 +90,10 @@ class RootBeerGuyJob(TaciturnJob):
                                                      genre_tags)
 
         facebook_handler.login()
-        fb_post_link = facebook_handler.pagepost_create('RBGuy9000', self.target_link, facebook_post_body)
+        fb_post_link = facebook_handler.pagepost_create('RBGuy9000',
+                                                        self.target_link,
+                                                        facebook_post_body,
+                                                        image_domain='bandcamp.com')
 
         print("Made facebook post.")
         # print("new page post link =", fb_post_link)
@@ -124,7 +127,7 @@ class RootBeerGuyJob(TaciturnJob):
                                                             genre_tags)
 
         instagram_handler.login()
-        instagram_handler.post_image(img_local_path, instagram_post_body, image_domain='bandcamp.com')
+        instagram_handler.post_image(img_local_path, instagram_post_body)
 
         print("Made instagram post.")
 

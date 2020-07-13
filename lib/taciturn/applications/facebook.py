@@ -134,7 +134,7 @@ class FacebookHandler(BaseApplicationHandler):
                 create_post_input.send_keys(link_url+' ')
 
                 print("pagepost_esablish_link: scanning for link preview image ({}) ...".format(parsed_link.netloc))
-                preview_image = self.e.page_post_link_image(image_domain or parsed_link.netloc).get_attribute('src')
+                preview_image = self.e.page_post_link_preview_image(image_domain or parsed_link.netloc).get_attribute('src')
                 if preview_image is not None:
                     print("Got preview image!")
                     print("image src =", preview_image)
@@ -215,7 +215,7 @@ class FacebookHandlerWebElements(ApplicationWebElements):
         return self.driver.find_element(
             By.XPATH, '//div[@aria-label="Remove post attachment"]/i')
 
-    def page_post_link_image(self, link_domain, retries=20):
+    def page_post_link_preview_image(self, link_domain, retries=20):
         # html of post image in preview:
         # <img height="261" width="500" alt="Schlake Opus (track), by Anvil Mesa"
         # class="i09qtzwb n7fi1qx3 datstx6m pmk7jnqg j9ispegn kr520xx4 k4urcfbm bixrwtb6"
