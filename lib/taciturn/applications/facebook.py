@@ -229,8 +229,16 @@ class FacebookHandlerWebElements(ApplicationWebElements):
                 self.driver.implicitly_wait(0)
                 print("page_post_link_image: scanning for image (x) button")
                 print("page_post_link_image: scanning for image with domain '{}'".format(link_domain))
-                img_element = self.driver.find_element(By.XPATH, '//a[contains(@href,"{}")]//img'.format(link_domain))
+                img_element = self.driver.find_element(By.XPATH,
+                                                       '//a[contains(@href,"{}")]//img'.format(link_domain))
                 WebDriverWait(self.driver, timeout=30).until(EC.visibility_of(img_element))
+
+                print("page_post_link_image: scanning for image (x) button")
+                img_xbox = self.driver.find_element(By.XPATH,
+                                                    '//div[@aria-label="Remove post attachment"]/i')
+                WebDriverWait(self.driver, timeout=30).until(EC.visibility_of(img_xbox))
+                print("(x) is visible?")
+
                 print("page_post_link_image: img_element =", img_element)
                 return img_element
             except (StaleElementReferenceException, NoSuchElementException) as e:
