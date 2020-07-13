@@ -78,7 +78,7 @@ class FacebookHandler(BaseApplicationHandler):
     def goto_page(self, page_path):
         self.driver.get(self.application_url+'/'+page_path)
 
-    def pagepost_create(self, page_path, post_link, post_body, image_domain=None):
+    def pagepost_create(self, page_path, post_link, post_body):
         self.goto_page(page_path)
         sleep(10)
         admin_header_y = self.e.page_admin_overhang_bottom()
@@ -91,7 +91,7 @@ class FacebookHandler(BaseApplicationHandler):
         print('pagepost_create: first_post_link =', first_post_link)
 
         # do our our post ...
-        self.pagepost_esablish_link(page_path, post_link, image_domain=image_domain)
+        self.pagepost_esablish_link(page_path, post_link)
         create_post_input = self.e.page_post_input()
         print('pagepost_create: sending post body')
         # sleep(3)
@@ -115,7 +115,7 @@ class FacebookHandler(BaseApplicationHandler):
         else:
             raise AppDataAnchorMissingException("Couldn't verify new post identity")
 
-    def pagepost_esablish_link(self, page_path, link_url, image_domain=None, retries=20):
+    def pagepost_esablish_link(self, page_path, link_url, retries=20):
         "puts the link in the create page input, makes sure the preview loads with image, then removes the link text."
 
         admin_header_y = self.e.page_admin_overhang_bottom()
@@ -134,10 +134,8 @@ class FacebookHandler(BaseApplicationHandler):
                 create_post_input.send_keys(link_url+' ')
 
                 print("pagepost_esablish_link: scanning for link preview image ({}) ...".format(parsed_link.netloc))
-                preview_image = self.e.page_post_link_preview_image(image_domain or parsed_link.netloc).get_attribute('src')
+                preview_image = self.e.page_post_link_preview_image()
                 if preview_image is not None:
-                    print("Got preview image!")
-                    print("image src =", preview_image)
 
                     #for n in range(len(link_url)+1):
                     #    create_post_input.send_keys(Keys.BACKSPACE)
@@ -215,7 +213,7 @@ class FacebookHandlerWebElements(ApplicationWebElements):
         return self.driver.find_element(
             By.XPATH, '//div[@aria-label="Remove post attachment"]/i')
 
-    def page_post_link_preview_image(self, link_domain, retries=20):
+    def page_post_link_preview_image(self, retries=20):
         # html of post image in preview:
         # <img height="261" width="500" alt="Schlake Opus (track), by Anvil Mesa"
         # class="i09qtzwb n7fi1qx3 datstx6m pmk7jnqg j9ispegn kr520xx4 k4urcfbm bixrwtb6"
@@ -227,20 +225,18 @@ class FacebookHandlerWebElements(ApplicationWebElements):
         for try_n in range(1, retries+1):
             try:  # following-sibling::div
                 self.driver.implicitly_wait(0)
-                print("page_post_link_image: scanning for image (x) button")
-                print("page_post_link_image: scanning for image with domain '{}'".format(link_domain))
-                img_element = self.driver.find_element(By.XPATH,
-                                                       '//a[contains(@href,"{}")]//img'.format(link_domain))
-                WebDriverWait(self.driver, timeout=30).until(EC.visibility_of(img_element))
+                # print("page_post_link_image: scanning for image (x) button")
+                # print("page_post_link_image: scanning for image with domain '{}'".format(link_domain))
+                # img_element = self.driver.find_element(By.XPATH,
+                #                                        '//a[contains(@href,"{}")]//img'.format(link_domain))
+                # WebDriverWait(self.driver, timeout=30).until(EC.visibility_of(img_element))
 
                 print("page_post_link_image: scanning for image (x) button")
                 img_xbox = self.driver.find_element(By.XPATH,
                                                     '//div[@aria-label="Remove post attachment"]/i')
-                WebDriverWait(self.driver, timeout=30).until(EC.visibility_of(img_xbox))
+                WebDriverWait(self.driver, timeout=90).until(EC.visibility_of(img_xbox))
                 print("(x) is visible?")
-
-                print("page_post_link_image: img_element =", img_element)
-                return img_element
+                return True
             except (StaleElementReferenceException, NoSuchElementException) as e:
                 # print('page_post_link_image: caught exception:', e)
                 sleep(0.2)
