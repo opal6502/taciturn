@@ -64,8 +64,7 @@ all_command_choices = command_job_choices + command_admin_choices
 
 def run_job(job_name, options):
     loader = TaciturnJobLoader(config=config)
-    job = loader.load_job(job_name)
-    job.init_job(options, config)
+    job = loader.load_job(job_name, options, config)
     job.run()
 
 

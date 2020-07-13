@@ -28,7 +28,8 @@ from taciturn.db.base import (
     User,
     AppAccount,
     Blacklist,
-    Whitelist
+    Whitelist,
+    JobId
 )
 
 from taciturn.db.followers import (
@@ -65,9 +66,20 @@ for app_name in supported_applications:
     app = Application(name=app_name, established=datetime.now())
     session.add(app)
 
-session.flush()
-session.commit()
-
 print('> ... done!')
 
+print('> Setting up job ids ...', end='')
+
+job_id_rows = session.query(JobId).count()
+if job_id_rows == 1:
+    print('Already done.')
+elif job_id_rows == 0:
+    new_jobid_row = JobId(id=1, job_id=1)
+    session.add(new_jobid_row)
+else:
+    print('Warning: multiple rows found in job id, should only be one!')
+
 print('Database has been initialized.')
+
+session.flush()
+session.commit()

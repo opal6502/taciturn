@@ -84,7 +84,8 @@ class BaseApplicationHandler(ABC):
     # database
     db_default_uri = "sqlite:///db/taciturn.sqlite"
 
-    def __init__(self, options, db_session, app_account, driver=None, elements=None):
+    def __init__(self, logger, options, db_session, app_account, driver=None, elements=None):
+        self.log = logger
         self.options = options
         self.session = db_session
 
@@ -96,7 +97,6 @@ class BaseApplicationHandler(ABC):
         self.driver = driver
 
         self.config = load_config()
-
         self.assets_dir = self.config['assets_dir']
         self.screenshots_dir = self.config.get('screenshots_dir')
 
@@ -106,6 +106,7 @@ class BaseApplicationHandler(ABC):
     def _load_access_lists(self):
         # load whitelist:
         # print("_load_access_lists for user '{}' on app '{}'".format(self.app_account.name, self.application_name))
+        self.log.info('Loading whitelist.')
         wl = self.session.query(Whitelist.name)\
                         .filter(and_(Whitelist.user_id == self.app_account.user_id,
                                      Whitelist.application_id == Application.id,
@@ -116,6 +117,7 @@ class BaseApplicationHandler(ABC):
         print("whitelist =", self.whitelist)
 
         # load blacklist:
+        self.log.info('Loading blacklist.')
         bl = self.session.query(Blacklist.name)\
                         .filter(and_(Blacklist.user_id == self.app_account.user_id,
                                      Blacklist.application_id == Application.id,
@@ -136,6 +138,8 @@ class BaseApplicationHandler(ABC):
             webdriver_type = self.options.driver[0]
         else:
             webdriver_type = self.options.driver or self.config.get('selenium_webdriver')
+
+        self.log.info('Starting selenium with {} web driver'.format(webdriver_type))
 
         if webdriver_type is None or webdriver_type == 'chrome':
             from selenium.webdriver.chrome.options import Options
@@ -181,24 +185,15 @@ class BaseApplicationHandler(ABC):
         elif webdriver_type == 'htmlunitwithjs':
             self.driver = Remote(desired_capabilities=webdriver.DesiredCapabilities.HTMLUNITWITHJS)
         else:
+            self.log.critical("Webdriver '{}' not supported, check config!".format(webdriver_type))
             raise TypeError("Webdriver '{}' not supported, check config!".format(webdriver_type))
 
-        self.driver.implicitly_wait(self.implicit_wait_default)
-        self._init_elements()
-
-    def _init_elements(self):
-        if self._elements_cls is not None:
-            self.e = self._elements_cls(self.driver, self.implicit_wait_default)
-        else:
-            print("Warning: it's a good idea to use the ApplicationWebElements pattern for your webelement selectors!")
-
     def load_cookies(self, cookie_file):
-        print("loading cookies from {}".format(cookie_file))
+        self.log.info("loading cookies from {}".format(cookie_file))
         cookiejar = MozillaCookieJar(cookie_file)
         cookiejar.load()
         for c in cookiejar:
             self.driver.get_cookie({'name': c.name, 'value': c.value})
-        print("done loading cookies.")
 
     def in_whitelist(self, name):
         return name.lower() in self.whitelist
@@ -207,6 +202,7 @@ class BaseApplicationHandler(ABC):
         return name.lower() in self.blacklist
 
     def quit(self):
+        self.log.info('Quitting.')
         self.driver.quit()
         self.session.close()
         del self.driver
@@ -342,12 +338,12 @@ class FollowerApplicationHandler(BaseApplicationHandler):
     # Application-specific goto-page methods:
 
     @abstractmethod
-    def goto_following_page(self, target_account):
+    def goto_following_page(self, target_account=None):
         "goto target_account's following page"
         pass
 
     @abstractmethod
-    def goto_followers_page(self, target_account):
+    def goto_followers_page(self, target_account=None):
         "goto target_account's followers page"
         pass
 
@@ -476,21 +472,20 @@ class FollowerApplicationHandler(BaseApplicationHandler):
 
             flist_username = self.flist_username(flist_entry)
             if self.in_blacklist(flist_username):
-                print("{} is in blacklist, skip ...")
-                flist_entry = self.e.flist_next(flist_entry)
+                self.log.info("{} is in blacklist, skip ...".format(flist_username))
+                flist_entry = self.flist_next(flist_entry)
                 continue
 
             flist_button = self.flist_button(flist_entry)
             flist_button_text = flist_button.text
             if self.flist_button_is_following(flist_button_text):
-                print("Already following {}, skip ...")
-                flist_entry = self.e.flist_next(flist_entry)
+                self.log.info("Already following {}, skip ...".format(flist_username))
+                flist_entry = self.flist_next(flist_entry)
                 continue
 
-            flist_image_src = self.flist_image_url(flist_entry)
-            if self.is_default_image(flist_image_src):
-                print("{} has no image, skip ...")
-                flist_entry = self.e.flist_next(flist_entry)
+            if self.flist_image_is_default(flist_entry):
+                self.log.info("{} has no image, skip ...".format(flist_username))
+                flist_entry = self.flist_next(flist_entry)
                 continue
 
             flist_unfollowed_row = self.db_get_unfollowed(flist_username)
@@ -498,8 +493,8 @@ class FollowerApplicationHandler(BaseApplicationHandler):
                                 and datetime.now() < flist_unfollowed_row.established + unfollow_hiatus
             if is_hiatus_expired:
                 time_remaining = (flist_unfollowed_row.established + unfollow_hiatus) - datetime.now()
-                print("Followed/unfollowed too recently, can follow again after", time_remaining)
-                flist_entry = self.e.flist_next(flist_entry)
+                self.log.info("Followed/unfollowed too recently, can follow again after {}".format(time_remaining))
+                flist_entry = self.flist_next(flist_entry)
                 continue
 
             # skip checks complete, now try to follow:
@@ -517,7 +512,7 @@ class FollowerApplicationHandler(BaseApplicationHandler):
                     self.session.delete(flist_following_row)
                     self.session.commit()
 
-                    flist_entry = self.e.flist_next(flist_entry)
+                    flist_entry = self.flist_next(flist_entry)
                     continue
 
                 # ok, try clicking follow button ...
@@ -525,19 +520,20 @@ class FollowerApplicationHandler(BaseApplicationHandler):
 
                 # check for follower fail conditions ...
 
-                # check if there's a follow limit notification:
-                if self.flist_is_blocked():
-                    print("User {} blocks us, skipping ...".format(flist_username))
-                    flist_entry = self.e.flist_next(flist_entry)
+                # check if there's a blocked or follow limit notification:
+
+                if self.flist_is_blocked_notice():
+                    self.log.info("User {} blocks us, skipping ...".format(flist_username))
+                    flist_entry = self.flist_next(flist_entry)
                     continue
 
-                if self.flist_is_follow_limit():
-                    print("Follow limit encountered, stopping.")
+                if self.flist_is_follow_limit_notice():
+                    self.log.info("Follow limit encountered, stopping.")
                     return following_count
 
                 # verify that follow button indicates success:
                 if not self.flist_button_is_following(flist_button_text):
-                    print("Couldn't follow, application limit probably hit, stopping.")
+                    self.log.info("Couldn't follow, application limit probably hit, stopping.")
                     return following_count
 
                 # follow verified, create database entry:
@@ -550,7 +546,7 @@ class FollowerApplicationHandler(BaseApplicationHandler):
 
                 self.session.add(new_following_row)
                 self.session.commit()
-                print("Follow added to database.")
+                self.log.info("Follow added to database.")
 
                 following_count += 1
 
@@ -564,10 +560,11 @@ class FollowerApplicationHandler(BaseApplicationHandler):
                     self.session.add(new_following_row)
                     self.session.commit()
             else:
+                self.log.critical("Entry button for '{}' says '{}'?".format(flist_username, flist_button_text))
                 raise AppUnexpectedStateException(
                     "Entry button for '{}' says '{}'?".format(flist_username, flist_button_text))
 
-            flist_entry = self.e.next_follower_entry(flist_entry)
+            flist_entry = self.flist_next(flist_entry)
 
         return following_count
 

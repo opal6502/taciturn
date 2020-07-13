@@ -19,9 +19,8 @@ import os
 from importlib.machinery import SourceFileLoader
 import datetime
 import copy
+import logging
 from itertools import chain
-
-import pprint
 
 from sqlalchemy import create_engine
 
@@ -35,6 +34,13 @@ default_config = {
     'cookie_dir': os.path.join(taciturn_root, 'cookies'),
     'screenshots_dir': os.path.join(taciturn_root, 'screenshots'),
     'assets_dir': os.path.join(taciturn_root, 'assets'),
+
+    'log_dir': os.path.join(taciturn_root, 'log'),
+    'log_individual_jobs': True,
+    'log_file': 'taciturn.log',   # if log_individual_jobs is false, all job output will go here
+    'log_level': logging.DEBUG,
+    'log_format': '%(asctime)s - {job_name} - %(levelname)s - %(message)s',
+
     'database_url': 'sqlite:///' + os.path.join(taciturn_root, 'db', 'taciturn.sqlite'),
     'orm_connect_args': {'timeout': 60},
 
@@ -42,7 +48,7 @@ default_config = {
 
     'day_length': datetime.timedelta(hours=8),
 
-    # selenium webdriver type:  'htmlunit', 'htmlunitjs', 'chrome', 'chrome_headless', 'firefox', 'firefox_headless'
+    # selenium webdriver type:  'chrome', 'chrome_headless', 'firefox', 'firefox_headless'
     'selenium_webdriver': 'chrome_headless',
 
     'app:*': {
@@ -80,7 +86,7 @@ default_config = {
 
         'action_timeout': (1000 * 5, 1000 * 30),
 
-    }
+    },
 }
 
 supported_applications = (

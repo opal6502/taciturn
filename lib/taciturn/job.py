@@ -22,32 +22,72 @@ from abc import ABC, abstractmethod
 import os
 
 from taciturn.config import load_config
-from taciturn.db.base import User, Application, AppAccount
+from taciturn.db.base import User, Application, AppAccount, JobId
 
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
 from datetime import timedelta
 from time import sleep, time
+import logging
 
 
 class TaciturnJob(ABC):
     __jobname__ = 'taciturn_job'
+    appnames = None
 
-    def init_job(self, options, config=None):
+    def __init__(self, options, config=None):
         self.accounts = dict()
         self.options = options
         self.config = config or load_config()
-
-        self.appnames = None
-        self.username = None
+        self.session = None
+        self.stop_no_quota = None
 
         if 'database_engine' in self.config:
             self.session = Session(bind=self.config['database_engine'])
         else:
             raise TypeError("No 'database_engine' provided by config!")
-
+        if self.appnames is None and not isinstance(self.appnames, list):
+            raise TypeError('Job needs to define self.appnames as a list of apps the job interacts with')
+        if self.options.user is None:
+            raise TypeError('User name must be provided in the options with -u')
+        self.username = self.options.user[0]
+        if self.options.stop is not None and self.options.stop is True:
+            self.stop_no_quota = True
+        else:
+            self.stop_no_quota = False
         self.load_accounts()
+        self.job_id = self.new_job_id()
+
+        # initialize logging here:
+        self.log = logging.getLogger()
+
+        if self.config['log_individual_jobs'] is True:
+            log_file_path = os.path.join(self.config['log_dir'], '{}.log'.format(self))
+        else:
+            log_file_path = os.path.join(self.config['log_dir'], self.config['log_file'])
+
+        lf = logging.Formatter(self.config['log_format'].format(job_name=str(self)))
+
+        fh = logging.FileHandler(log_file_path)
+        fh.setLevel(self.config['log_level'])
+        fh.setFormatter(lf)
+
+        sh = logging.StreamHandler()
+        sh.setLevel(self.config['log_level'])
+        sh.setFormatter(lf)
+
+        self.log.info('Job initialized.')
+
+    def __str__(self):
+        return '{}.{}'.format(self.__jobname__, self.job_id)
+
+    def new_job_id(self):
+        job_id_row = self.session.query(JobId).filter_by(id=1).one()
+        new_job_id = job_id_row.job_id + 1
+        job_id_row.job_id = new_job_id
+        self.session.commit()
+        return new_job_id
 
     def load_accounts(self):
         for app_name in self.appnames:
@@ -92,22 +132,16 @@ class TaciturnJobLoader:
 
         return job_dir
 
-    def load_job(self, job_name):
+    def load_job(self, job_name, options, config):
         job_full_name = os.path.join(self.jobs_dir, job_name+'.py')
 
         if not os.path.exists(job_full_name):
             raise RuntimeError("Job '{}' doesn't exist at: {}".format(job_name, job_full_name))
 
-        return self.load_jobfile(job_full_name)
-
-    def load_jobfile(self, job_full_name=None):
         job_module = SourceFileLoader('site_config', job_full_name).load_module()
-
         if not hasattr(job_module, 'job'):
             raise TypeError("Job file does not define 'job' object: {}".format(job_full_name))
-        if not isinstance(job_module.job, TaciturnJob):
-            raise TypeError("'job' object is not type TaciturnJob in file: {}".format(job_full_name))
-        return job_module.job
+        return job_module.job(options, config)
 
 
 class TaskExecutor:
@@ -116,7 +150,7 @@ class TaskExecutor:
         self.name=name
         self.quota=quota
         self.max=max
-        self.period=None
+        self.period=period  # datetime.timedelta() object
         self.retries=retries or 1
         self.stop_no_quota = stop_no_quota
 
@@ -127,7 +161,7 @@ class TaskExecutor:
         self.start_epoch = None
 
     def run(self):
-        total_rounds = self.quota // self.max
+        total_rounds = self.max // self.quota
         task_timeout = self.period.total_seconds() / total_rounds
 
         for round_n in range(1, total_rounds+1):
@@ -139,7 +173,7 @@ class TaskExecutor:
                     operation_count = self.call()
                 except Exception as e:
                     print('Task {}: Round {} of {} failed, try {} of {}; exception occurred: {}'
-                            .format(self.name, round_n, total_rounds, self.name, try_n, self.retries, e))
+                            .format(self.name, round_n, total_rounds, try_n, self.retries, str(e)))
                     if try_n >= self.retries:
                         raise e
                 else:

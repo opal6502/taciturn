@@ -62,8 +62,9 @@ class TwitterHandler(FollowerApplicationHandler):
 
     follow_random_wait = (10, 60)
 
-    def __init__(self, options, db_session, app_account, driver=None, elements=None):
-        super().__init__(options, db_session, app_account, driver, TwitterHandlerWebElements)
+    def __init__(self, logger, options, db_session, app_account, driver=None, elements=None):
+        super().__init__(logger, options, db_session, app_account, driver, TwitterHandlerWebElements)
+        self.log.info('Starting twitter app handler.')
 
         self.follow_back_hiatus = self.config['app:twitter']['follow_back_hiatus']
         self.unfollow_hiatus = self.config['app:twitter']['unfollow_hiatus']
@@ -71,30 +72,42 @@ class TwitterHandler(FollowerApplicationHandler):
         self.mutual_expire_hiatus = self.config['app:twitter']['mutual_expire_hiatus']
 
         self.init_webdriver()
-
         self.goto_homepage()
 
     def goto_homepage(self):
-        self.driver.get(self.application_url + '/home')
+        homepage_link = self.application_url + '/home'
+        self.log.info('Going to home page: {}'.format(homepage_link))
+        self.driver.get(homepage_link)
 
     def goto_user_page(self):
         self.driver.get(self.application_url + '/home')
         profile_link = self.e.home_profile_link().get_attribute('href')
+        self.log.info('Going to page: {}'.format(profile_link))
         self.driver.get(profile_link)
 
-    def goto_following_page(self):
-        self.driver.get(self.application_url + '/home')
-        profile_link = self.e.home_profile_link().get_attribute('href')
-        self.driver.get(profile_link)
-        self.driver.find_element(By.XPATH,
-                                 '//*[@id="react-root"]//div[1]/a/span[2]/span[text()="Following"]').click()
+    def goto_following_page(self, target_account=None):
+        if target_account is None:
+            self.log.info('Going to our following page.')
+            self.goto_user_page()
+            locator = (By.XPATH, '//*[@id="react-root"]//div[1]/a/span[2]/span[text()="Following"]')
+            self.new_wait(self.driver, timeout=60)\
+                   .until(EC.presence_of_element_located(locator)).click()
+        else:
+            target_link = '{}/{}/following'.format(self.application_url, target_account)
+            self.log.info('Going to page: {}'.format(target_link))
+            self.driver.get(target_link)
 
-    def goto_followers_page(self):
-        self.driver.get(self.application_url + '/home')
-        profile_link = self.e.home_profile_link().get_attribute('href')
-        self.driver.get(profile_link)
-        self.driver.find_element(By.XPATH,
-                                 '//*[@id="react-root"]//div[2]/a/span[2]/span[text()="Followers"]').click()
+    def goto_followers_page(self, target_account=None):
+        if target_account is None:
+            self.log.info('Going to our followers page.')
+            self.goto_user_page()
+            locator = (By.XPATH, '//*[@id="react-root"]//div[2]/a/span[2]/span[text()="Followers"]')
+            self.new_wait(self.driver, timeout=60)\
+                   .until(EC.presence_of_element_located(locator)).click()
+        else:
+            target_link = '{}/{}/followers'.format(self.application_url, target_account)
+            self.log.info('Going to page: {}'.format(target_link))
+            self.driver.get(target_link)
 
     def login(self):
         # enter username and password:
@@ -106,7 +119,7 @@ class TwitterHandler(FollowerApplicationHandler):
         # use this to verify login ...
         self.e.home_profile_link()
         
-        print("Logged in to twitter ok!")
+        self.log.info('Logged in.')
 
     def start_following(self, target_account, quota=None, unfollow_hiatus=None):
         print("start_following: starting up ...")
@@ -594,7 +607,7 @@ class TwitterHandler(FollowerApplicationHandler):
 
     def flist_username(self, flist_entry):
         locator = self._flist_username_locator()
-        return self.new_wait(flist_entry).until(EC.presence_of_element_located(locator))
+        return self.new_wait(flist_entry).until(EC.presence_of_element_located(locator)).text
 
     def _flist_username_locator(self):
         return (By.XPATH, './div/div/div/div[2]/div/div[1]/a/div/div[2]/div/span[starts-with(text(), "@")] | '
@@ -631,6 +644,8 @@ class TwitterHandler(FollowerApplicationHandler):
 
     def flist_is_blocked_notice(self):
         popover = self._bottom_notify_popover()
+        if popover is None:
+            return False
         popover_text = popover.text
         if popover_text is not None and popover_text == 'You have been blocked from following this user at their request.':
             # halt and wait until the blocked notice disappers, so it doesn't confuse us later:
@@ -639,7 +654,10 @@ class TwitterHandler(FollowerApplicationHandler):
         return False
 
     def flist_is_follow_limit_notice(self):
-        popover_text = self._bottom_notify_popover().text
+        popover = self._bottom_notify_popover()
+        if popover is None:
+            return False
+        popover_text = popover.text
         if popover_text is not None and popover_text == 'You are unable to follow more people at this time.':
             return True
         return False

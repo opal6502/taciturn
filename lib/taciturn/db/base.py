@@ -16,7 +16,7 @@
 
 
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, BigInteger
 from sqlalchemy.orm import relationship
 
 ORMBase = declarative_base()
@@ -90,6 +90,14 @@ class Blacklist(ORMBase):
 
     established = Column(DateTime, nullable=False)
     name = Column(String(100), nullable=False)
+
+
+class JobId(ORMBase):
+    "where the latest job_id is kept"
+    __tablename__ = 'jobid'
+
+    id = Column(Integer, primary_key=True)
+    job_id = Column(BigInteger, nullable=False)
 
 
 # Taciturn data related exceptions:
