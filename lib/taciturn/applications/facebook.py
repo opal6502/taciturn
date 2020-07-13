@@ -78,7 +78,7 @@ class FacebookHandler(BaseApplicationHandler):
     def goto_page(self, page_path):
         self.driver.get(self.application_url+'/'+page_path)
 
-    def pagepost_create(self, page_path, post_link, post_body):
+    def pagepost_create(self, page_path, post_link, post_body, image_domain=None):
         self.goto_page(page_path)
         sleep(10)
         admin_header_y = self.e.page_admin_overhang_bottom()
@@ -91,7 +91,7 @@ class FacebookHandler(BaseApplicationHandler):
         print('pagepost_create: first_post_link =', first_post_link)
 
         # do our our post ...
-        self.pagepost_esablish_link(page_path, post_link)
+        self.pagepost_esablish_link(page_path, post_link, image_domain=image_domain)
         create_post_input = self.e.page_post_input()
         print('pagepost_create: sending post body')
         # sleep(3)
@@ -115,7 +115,7 @@ class FacebookHandler(BaseApplicationHandler):
         else:
             raise AppDataAnchorMissingException("Couldn't verify new post identity")
 
-    def pagepost_esablish_link(self, page_path, link_url, retries=20):
+    def pagepost_esablish_link(self, page_path, link_url, image_domain=None, retries=20):
         "puts the link in the create page input, makes sure the preview loads with image, then removes the link text."
 
         admin_header_y = self.e.page_admin_overhang_bottom()
@@ -134,9 +134,10 @@ class FacebookHandler(BaseApplicationHandler):
                 create_post_input.send_keys(link_url+' ')
 
                 print("pagepost_esablish_link: scanning for link preview image ({}) ...".format(parsed_link.netloc))
-                preview_image = self.e.page_post_link_image(parsed_link.netloc)
+                preview_image = self.e.page_post_link_image(image_domain or parsed_link.netloc).get_attribute('src')
                 if preview_image is not None:
                     print("Got preview image!")
+                    print("image src =", preview_image)
 
                     #for n in range(len(link_url)+1):
                     #    create_post_input.send_keys(Keys.BACKSPACE)
@@ -146,10 +147,13 @@ class FacebookHandler(BaseApplicationHandler):
 
                     # take a look at this ajaxy input field ...
                     # create_post_input = self.e.page_post_input()
-                    with open('pagepost_esablish_link.html', 'w') as f:
-                        f.write(create_post_input.get_attribute('innerHTML'))
+                    # with open('pagepost_esablish_link.html', 'w') as f:
+                    #    f.write(create_post_input.get_attribute('innerHTML'))
 
                     return True
+                else:
+                    print('Couldn\'t get preview image!')
+                    continue
             except (StaleElementReferenceException, NoSuchElementException, ElementClickInterceptedException) as e:
                 print('pagepost_esablish_link: caught exception:', e)
                 # sleep(5)
@@ -285,6 +289,7 @@ class FacebookHandlerWebElements(ApplicationWebElements):
             except (StaleElementReferenceException, NoSuchElementException) as e:
                 print('page_post_link: caught exception:', e)
 
+                self.driver.execute_script("window.scrollTo(0,0);")
                 offset = self.page_admin_overhang_bottom()
                 self.driver.execute_script("arguments[0].scrollIntoView();", page_post)
                 scroll_position = self.driver.execute_script("return document.documentElement.scrollTop;")

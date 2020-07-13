@@ -124,7 +124,7 @@ class RootBeerGuyJob(TaciturnJob):
                                                             genre_tags)
 
         instagram_handler.login()
-        instagram_handler.post_image(img_local_path, instagram_post_body)
+        instagram_handler.post_image(img_local_path, instagram_post_body, image_domain='bandcamp.com')
 
         print("Made instagram post.")
 
