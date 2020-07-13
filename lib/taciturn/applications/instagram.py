@@ -551,13 +551,20 @@ class InstagramHandler(FollowerApplicationHandler):
                 WebDriverWait(unfollow_entry, 60).until(
                     lambda e: self.e.follower_button(e).text in BUTTON_TEXT_NOT_FOLLOWING)
 
-                # create a new unfollow entry:
-                new_unfollowed = Unfollowed(name=following_db.name,
-                                            established=datetime.now(),
-                                            user_id=following_db.user_id,
-                                            application_id=following_db.application_id)
+                # create a new unfollow entry, check if one already exists:
+                unfollowed = self.session.query(Unfollowed).filter(
+                    and_(Unfollowed.name == unfollow_username,
+                         Unfollowed.user_id == self.app_account.user_id,
+                         Unfollowed.application_id == Application.id,
+                         Application.name == self.application_name)) \
+                    .one_or_none()
+                if unfollowed is None:
+                    new_unfollowed = Unfollowed(name=following_db.name,
+                                                established=datetime.now(),
+                                                user_id=following_db.user_id,
+                                                application_id=following_db.application_id)
+                    self.session.add(new_unfollowed)
 
-                self.session.add(new_unfollowed)
                 self.session.delete(following_db)
 
                 self.session.commit()
