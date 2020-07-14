@@ -73,12 +73,12 @@ default_config = {
 
     },
     'app:soundcloud': {
-        'daily_max_follows': 400,
+        'daily_max_follows': 40,
         'round_max_follows': 40,
         'daily_max_unfollows': 40,
         'round_max_unfollows': 40,
 
-        'action_timeout': (1000 * 5, 1000 * 30),
+        'action_timeout': (1000*5, 1000*60*2),
 
     }
 }
