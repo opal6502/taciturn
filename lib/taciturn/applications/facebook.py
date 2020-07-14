@@ -223,13 +223,23 @@ class FacebookHandlerWebElements(ApplicationWebElements):
         # this seems pretty good:
         # //a[contains(@href, "{domain}")]//img
         for try_n in range(1, retries+1):
+            try:
+                self.driver.implicitly_wait(0)
+                # check for the loading screen, and wait for it to pass
+                # <div aria-busy="true" aria-valuemax="100" aria-valuemin="0" aria-valuetext="Loading..."
+                # role="progressbar" tabindex="0" data-visualcompletion="loading-state"
+                preview_loading = self.driver.find_element(
+                    By.XPATH, '//*[@id="mount_0_0"]/div/div/div[1]/div[4]'
+                              '//div[@data-visualcompletion="loading-state" and @role="progressbar"]')
+                WebDriverWait(self.driver, timeout=90).until(EC.invisibility_of_element(preview_loading))
+            except (TimeoutException, NoSuchElementException) as e:
+                if try_n == retries:
+                    raise e
+            finally:
+                self.driver.implicitly_wait(self.implicit_default_wait)
+
             try:  # following-sibling::div
                 self.driver.implicitly_wait(0)
-                # print("page_post_link_image: scanning for image (x) button")
-                # print("page_post_link_image: scanning for image with domain '{}'".format(link_domain))
-                # img_element = self.driver.find_element(By.XPATH,
-                #                                        '//a[contains(@href,"{}")]//img'.format(link_domain))
-                # WebDriverWait(self.driver, timeout=30).until(EC.visibility_of(img_element))
 
                 print("page_post_link_image: scanning for image (x) button")
                 img_xbox = self.driver.find_element(By.XPATH,
