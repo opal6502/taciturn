@@ -139,7 +139,7 @@ class FacebookHandler(BaseApplicationHandler):
 
                     #for n in range(len(link_url)+1):
                     #    create_post_input.send_keys(Keys.BACKSPACE)
-
+                    sleep(10)
                     create_post_input.send_keys(Keys.COMMAND + 'a')
                     create_post_input.send_keys(Keys.BACKSPACE)
 
@@ -224,7 +224,7 @@ class FacebookHandlerWebElements(ApplicationWebElements):
         # //a[contains(@href, "{domain}")]//img
         for try_n in range(1, retries+1):
             try:
-                self.driver.implicitly_wait(10)
+                self.driver.implicitly_wait(90)
                 # check for the loading screen, and wait for it to pass
                 # <div aria-busy="true" aria-valuemax="100" aria-valuemin="0" aria-valuetext="Loading..."
                 # role="progressbar" tabindex="0" data-visualcompletion="loading-state"
@@ -234,7 +234,7 @@ class FacebookHandlerWebElements(ApplicationWebElements):
                 print('waiting for preview to load ...')
                 WebDriverWait(self.driver, timeout=90).until(EC.invisibility_of_element(preview_loading))
                 print('preview loaded.')
-            except (TimeoutException, NoSuchElementException) as e:
+            except (TimeoutException, NoSuchElementException, StaleElementReferenceException) as e:
                 pass
             finally:
                 self.driver.implicitly_wait(self.implicit_default_wait)
