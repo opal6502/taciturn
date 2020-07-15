@@ -54,37 +54,23 @@ import os
 import time
 import random
 import numbers
-from datetime import datetime
+from datetime import datetime, timedelta
 from hashlib import sha256
 from http.cookiejar import MozillaCookieJar
 
 
 class BaseApplicationHandler(ABC):
-    """
-    Contains things all applications will have in common:
-        - service homepage
-        - user login
-        - user password
-        - user homepage
-        - config, an initialized taciturn.config.Config object
-        - selenium webdriver, defaults to Firefox
-    """
     application_name = None
 
-    # retry limit for sensitive information:
-    default_load_retries = 10
-    # timeout wait between retries:
-    default_load_retry_timeout = 60*3
+    application_url = None
+    application_login_url = None
 
-    application_asset_dirname = 'base_app'
+    application_asset_dirname = None
     default_profile_image = None
 
-    implicit_wait_default = 60
+    webdriver_user_agent = None
 
-    # database
-    db_default_uri = "sqlite:///db/taciturn.sqlite"
-
-    def __init__(self, logger, options, db_session, app_account, driver=None, elements=None):
+    def __init__(self, logger, options, db_session, app_account, driver=None):
         self.log = logger
         self.options = options
         self.session = db_session
@@ -93,12 +79,13 @@ class BaseApplicationHandler(ABC):
         self.app_password = app_account.password
         self.app_account = app_account
 
-        self._elements_cls = elements
-        self.driver = driver
-
         self.config = load_config()
         self.assets_dir = self.config['assets_dir']
         self.screenshots_dir = self.config.get('screenshots_dir')
+
+        self.driver = driver
+        if self.driver is None:
+            self._init_webdriver()
 
         # init white/blacklists:
         self._load_access_lists()
@@ -114,7 +101,6 @@ class BaseApplicationHandler(ABC):
                                      Application.id == Whitelist.application_id))
         # print("whitelist = ", wl.all())
         self.whitelist = {w.lower() for w, in wl}
-        print("whitelist =", self.whitelist)
 
         # load blacklist:
         self.log.info('Loading blacklist.')
@@ -124,16 +110,11 @@ class BaseApplicationHandler(ABC):
                                      Application.name == self.application_name,
                                      Application.id == Blacklist.application_id))
         self.blacklist = {b.lower() for b, in bl}
-        print("blacklist =", self.blacklist)
 
-    def init_webdriver(self, user_agent=None):
-        # init Selenium:
+    def _init_webdriver(self):
+        # init Selenium webdriver:
 
-        # if driver is set by init, just go with that:
-        if self.driver is not None:
-            self._init_elements()
-            return
-
+        # driver is usually passed by command line or config:
         if self.options.driver:
             webdriver_type = self.options.driver[0]
         else:
@@ -148,8 +129,8 @@ class BaseApplicationHandler(ABC):
             opts.add_argument("--window-size=1920,1080")
             opts.add_argument("--disable-popup-blocking")
             opts.page_load_strategy = 'normal'
-            if user_agent:
-                opts.add_argument("user-agent={}".format(user_agent))
+            if self.webdriver_user_agent:
+                opts.add_argument("user-agent={}".format(self.webdriver_user_agent))
                 self.driver = Chrome(options=opts)
             else:
                 self.driver = Chrome()
@@ -160,26 +141,27 @@ class BaseApplicationHandler(ABC):
             opts.add_argument("--window-size=1920,1080")
             opts.add_argument("--disable-popup-blocking")
             opts.page_load_strategy = 'normal'
-            if user_agent:
-                opts.add_argument("user-agent={}".format(user_agent))
+            if self.webdriver_user_agent:
+                opts.add_argument("user-agent={}".format(self.webdriver_user_agent))
             opts.add_argument("--headless")
             self.driver = Chrome(options=opts)
         elif webdriver_type == 'firefox':
             from selenium.webdriver import FirefoxProfile
             profile = FirefoxProfile()
-            if user_agent:
-                profile.set_preference('general.useragent.override', user_agent)
+            if self.webdriver_user_agent:
+                profile.set_preference('general.useragent.override', self.webdriver_user_agent)
             self.driver = Firefox(profile)
         elif webdriver_type == 'firefox_headless':
             from selenium.webdriver.firefox.options import Options
             from selenium.webdriver import FirefoxProfile
             profile = FirefoxProfile()
             options = Options()
-            if user_agent:
-                profile.set_preference('general.useragent.override', user_agent)
+            if self.webdriver_user_agent:
+                profile.set_preference('general.useragent.override', self.webdriver_user_agent)
             options.headless = True
             self.driver = Firefox(profile, options=options)
             driver = webdriver.Firefox(options=options)
+        # XXX this htmlunit stuff has not at all been tested by me, but it should be enough?
         elif webdriver_type == 'htmlunit':
             self.driver = Remote(desired_capabilities=webdriver.DesiredCapabilities.HTMLUNIT)
         elif webdriver_type == 'htmlunitwithjs':
@@ -209,16 +191,20 @@ class BaseApplicationHandler(ABC):
         del self.session
 
     @abstractmethod
-    def goto_homepage(self):
-        raise NotImplementedError
-
-    @abstractmethod
-    def goto_user_page(self):
-        raise NotImplementedError
-
-    @abstractmethod
     def login(self):
-        raise NotImplementedError
+        pass
+
+    @abstractmethod
+    def goto_homepage(self):
+        pass
+
+    @abstractmethod
+    def goto_profile_page(self, user_name=None):
+        pass
+
+    def goto_login_page(self):
+        self.log.info("Going to login page: {}".format(self.application_login_url))
+        self.driver.get(self.application_login_url)
 
     def download_image(self, image_url, prefix=None, file_extension='.jpg'):
         if prefix is None:
@@ -240,23 +226,26 @@ class BaseApplicationHandler(ABC):
             default_image or os.path.join(self.assets_dir, 'application', self.application_name,
                                           default_image or self.default_profile_image))
 
-    def scrollto_element(self, element, offset=None):
+    def scrollto_element(self, element, y_offset=None):
         self.driver.execute_script("arguments[0].scrollIntoView();", element)
-        if offset is not None:
+        if y_offset is not None:
             scroll_position = self.driver.execute_script("return document.documentElement.scrollTop;")
-            self.driver.execute_script("window.scrollTo(0, arguments[0]);", scroll_position - offset)
+            self.driver.execute_script("window.scrollTo(0, arguments[0]);", scroll_position - y_offset)
 
-    @staticmethod
-    def sleepmsrange(r):
+    def sleepmsrange(self, r):
         if isinstance(r, tuple) and len(r) == 2:
-            time.sleep(random.randrange(r[0], r[1]) / 1000)
-        elif isinstance(r, numbers.Number):
-            time.sleep(r / 1000)
+            sleep_duration = random.randrange(r[0], r[1]) / 1000
+        elif isinstance(r, numbers.Real):
+            sleep_duration = r / 1000
         else:
             raise TypeError("sleepmsrange: takes one integer or a two-tuple of millisecond values.")
 
+        duration = timedelta(seconds=sleep_duration)
+        self.log.info('Sleeping for {}.'.format(duration))
+        time.sleep(sleep_duration)
+
     @staticmethod
-    def image_cmp(image1_path, image2_path):
+    def image_cmp(image1_file, image2_file):
         """Compare two images from url or disk path
             if image1_path or image2_path is a valid URL, we try
             to download it, if it's not a valid URL, we try to read it
@@ -264,22 +253,19 @@ class BaseApplicationHandler(ABC):
 
             We fetch URLs using BytesIO, so no tmp files are created!
         """
-        # print("image_cmp, image1_path:", image1_path)
-        # print("image_cmp, image2_path:", image2_path)
-
         try:
-            response = requests.get(image1_path)
+            response = requests.get(image1_file)
             image1_file = Image.open(BytesIO(response.content))
         except (requests.exceptions.MissingSchema, requests.exceptions.URLRequired, ) as e:
             # print("Image {} is not valid URL, trying as path ...".format(image1_path, e))
-            image1_file = Image.open(image1_path)
+            image1_file = Image.open(image1_file)
 
         try:
-            response = requests.get(image2_path)
+            response = requests.get(image2_file)
             image2_file = Image.open(BytesIO(response.content))
         except (requests.exceptions.MissingSchema, requests.exceptions.URLRequired) as e:
             # print("Image {} is not valid URL, trying as path ...".format(image2_path, e))
-            image2_file = Image.open(image2_path)
+            image2_file = Image.open(image2_file)
 
         try:
             if ImageChops.difference(image1_file, image2_file).getbbox():
@@ -301,56 +287,31 @@ class BaseApplicationHandler(ABC):
                              ignored_exceptions=ignored_exceptions)
 
 
-class ApplicationWebElements(ABC):
-    """Container that wraps webelement selectors in methods!
-
-    a convienent way of adressing common element selectors as self.e.method(...) within ApplicationHandlers!
-    """
-    def __init__(self, driver, default_wait):
-        self.driver = driver
-        self.implicit_default_wait = default_wait
-
-
 # base classes for application patterns:
 #  for example follower based, we can create a common interface for this!
 
 class FollowerApplicationHandler(BaseApplicationHandler):
+    def __init__(self, logger, options, db_session, app_account, driver=None):
+        super().__init__(logger, options, db_session, app_account, driver)
+
+        config_name = 'app:{}'.format(self.application_name)
+        self.follow_back_hiatus = self.config[config_name]['follow_back_hiatus']
+        self.unfollow_hiatus = self.config[config_name]['unfollow_hiatus']
+        self.action_timeout = self.config[config_name]['action_timeout']
+        self.mutual_expire_hiatus = self.config[config_name]['mutual_expire_hiatus']
+
     @abstractmethod
-    def start_following(self, target_account, quota=None, unfollow_hiatus=None):
-        "start following the followers of target_account"
+    def goto_following_page(self, user_name=None):
         pass
 
     @abstractmethod
-    def update_followers(self):
-        "scan our followers, and update the database, new follower timestamp is when this method scans a new follower!"
-        pass
-
-    @abstractmethod
-    def update_following(self):
-        "scan who we are following, if an entry is unexpected, we add it and timespamp it if it's not whitelisted"
-        pass
-
-    @abstractmethod
-    def start_unfollowing(self, quota=None, follow_back_hiatus=None):
-        "scan followers, and unfollow accounts that we've been following for a time, and don't follow us back!"
-        pass
-
-    # Application-specific goto-page methods:
-
-    @abstractmethod
-    def goto_following_page(self, target_account=None):
-        "goto target_account's following page"
-        pass
-
-    @abstractmethod
-    def goto_followers_page(self, target_account=None):
-        "goto target_account's followers page"
+    def goto_followers_page(self, user_name=None):
         pass
 
     # Database methods for FollowerApplicationHandler:
 
     def db_get_unfollowed(self, flist_username):
-        return self.session.query(Unfollowed) \
+        return self.session.query(Unfollowed)\
                 .filter(and_(Unfollowed.name == flist_username,
                              Unfollowed.user_id == self.app_account.user_id,
                              Unfollowed.application_id == self.app_account.application_id,
@@ -381,6 +342,12 @@ class FollowerApplicationHandler(BaseApplicationHandler):
                           established=datetime.now(),
                           application_id=self.app_account.application_id,
                           user_id=self.app_account.user_id)
+
+    def db_new_follower(self, flist_username):
+        return Follower(name=flist_username,
+                        established=datetime.now(),
+                        application_id=self.app_account.application_id,
+                        user_id=self.app_account.user_id)
 
     # Follower list 'flist' processing methods:
 
@@ -429,11 +396,21 @@ class FollowerApplicationHandler(BaseApplicationHandler):
 
     @abstractmethod
     def flist_button_is_following(self, flist_button_text):
-        "used to wait and verify that flist_entry's button text reflects an application-specific following state"
+        "used to verify that flist_entry's button text reflects an application-specific following state"
         pass
 
     @abstractmethod
     def flist_button_is_not_following(self, flist_button_text):
+        "used to verify that flist_entry's button text reflects an application-specific non-following state"
+        pass
+
+    @abstractmethod
+    def flist_button_wait_following(self, flist_button):
+        "used to wait and verify that flist_entry's button text reflects an application-specific following state"
+        pass
+
+    @abstractmethod
+    def flist_button_wait_not_following(self, flist_button):
         "used to wait and verify that flist_entry's button text reflects an application-specific non-following state"
         pass
 
@@ -452,7 +429,7 @@ class FollowerApplicationHandler(BaseApplicationHandler):
         "check if there'a a notification that our account cannot follow now"
         pass
 
-    def general_start_following(self, target_account, quota=None, unfollow_hiatus=None):
+    def start_following(self, target_account, quota=None, unfollow_hiatus=None):
         "A generalized start_following method, made to be application-agnostic."
         self.goto_following_page(target_account)
 
@@ -462,7 +439,7 @@ class FollowerApplicationHandler(BaseApplicationHandler):
         following_count = 0
 
         while quota is None or following_count < quota:
-            self.scrollto_element(flist_entry, offset=header_overlap_y)
+            self.scrollto_element(flist_entry, y_offset=header_overlap_y)
 
             # twitter end-of-list detection, other applications should always return true:
             if self.flist_is_empty(flist_entry):
@@ -473,6 +450,9 @@ class FollowerApplicationHandler(BaseApplicationHandler):
             flist_username = self.flist_username(flist_entry)
             if self.in_blacklist(flist_username):
                 self.log.info("{} is in blacklist, skip ...".format(flist_username))
+                if self.flist_is_last(flist_entry):
+                    self.log.info('List end encountered, stopping.')
+                    return following_count
                 flist_entry = self.flist_next(flist_entry)
                 continue
 
@@ -480,11 +460,17 @@ class FollowerApplicationHandler(BaseApplicationHandler):
             flist_button_text = flist_button.text
             if self.flist_button_is_following(flist_button_text):
                 self.log.info("Already following {}, skip ...".format(flist_username))
+                if self.flist_is_last(flist_entry):
+                    self.log.info('List end encountered, stopping.')
+                    return following_count
                 flist_entry = self.flist_next(flist_entry)
                 continue
 
             if self.flist_image_is_default(flist_entry):
                 self.log.info("{} has no image, skip ...".format(flist_username))
+                if self.flist_is_last(flist_entry):
+                    self.log.info('List end encountered, stopping.')
+                    return following_count
                 flist_entry = self.flist_next(flist_entry)
                 continue
 
@@ -494,6 +480,9 @@ class FollowerApplicationHandler(BaseApplicationHandler):
             if is_hiatus_expired:
                 time_remaining = (flist_unfollowed_row.established + unfollow_hiatus) - datetime.now()
                 self.log.info("Followed/unfollowed too recently, can follow again after {}".format(time_remaining))
+                if self.flist_is_last(flist_entry):
+                    self.log.info('List end encountered, stopping.')
+                    return following_count
                 flist_entry = self.flist_next(flist_entry)
                 continue
 
@@ -512,6 +501,9 @@ class FollowerApplicationHandler(BaseApplicationHandler):
                     self.session.delete(flist_following_row)
                     self.session.commit()
 
+                    if self.flist_is_last(flist_entry):
+                        self.log.info('List end encountered, stopping.')
+                        return following_count
                     flist_entry = self.flist_next(flist_entry)
                     continue
 
@@ -524,6 +516,9 @@ class FollowerApplicationHandler(BaseApplicationHandler):
 
                 if self.flist_is_blocked_notice():
                     self.log.info("User {} blocks us, skipping ...".format(flist_username))
+                    if self.flist_is_last(flist_entry):
+                        self.log.info('List end encountered, stopping.')
+                        return following_count
                     flist_entry = self.flist_next(flist_entry)
                     continue
 
@@ -532,8 +527,11 @@ class FollowerApplicationHandler(BaseApplicationHandler):
                     return following_count
 
                 # verify that follow button indicates success:
-                if not self.flist_button_is_following(flist_button_text):
-                    self.log.info("Couldn't follow, application limit probably hit, stopping.")
+                try:
+                    self.flist_button_wait_following(flist_button)
+                except TimeoutException:
+                    self.log.info("Couldn't follow user {}, application limit probably hit, stopping."
+                                    .format(flist_username))
                     return following_count
 
                 # follow verified, create database entry:
@@ -546,7 +544,7 @@ class FollowerApplicationHandler(BaseApplicationHandler):
 
                 self.session.add(new_following_row)
                 self.session.commit()
-                self.log.info("Follow added to database.")
+                self.log.info("Follow for {} added to database.".format(flist_username))
 
                 following_count += 1
 
@@ -568,9 +566,160 @@ class FollowerApplicationHandler(BaseApplicationHandler):
 
         return following_count
 
+    def start_unfollowing(self, quota=None, follow_back_hiatus=None, mutual_expire_hiatus=None):
+        self.goto_following_page()
+
+        follow_back_hiatus = follow_back_hiatus or self.follow_back_hiatus
+        mutual_expire_hiatus = follow_back_hiatus or self.mutual_expire_hiatus
+
+        header_overlap_y = self.flist_header_overlap_y()
+        flist_entry = self.flist_first()
+        unfollow_count = 0
+
+        while quota is None or unfollow_count < quota:
+            self.scrollto_element(flist_entry, y_offset=header_overlap_y)
+
+            # twitter end-of-list detection:
+            if self.flist_is_empty(flist_entry):
+                return unfollow_count
+
+            # get flist info fields, skipping where possible:
+            flist_username = self.flist_username(flist_entry)
+
+            if self.in_whitelist(flist_username):
+                self.log.info('{} is in whitelist, skipping.'.format(flist_username))
+                if self.flist_is_last(flist_entry):
+                    self.log.info('List end encountered, stopping.')
+                    return unfollow_count
+                flist_entry = self.flist_next(flist_entry)
+                continue
+
+            flist_following_row = self.db_get_following(flist_username)
+
+            if flist_following_row is None:
+                print('No following entry for {}, creating record and skipping.')
+                new_following = self.db_new_following(flist_username)
+                self.session.add(new_following)
+                self.session.commit()
+                if self.flist_is_last(flist_entry):
+                    self.log.info('List end encountered, stopping.')
+                    return unfollow_count
+                flist_entry = self.flist_next(flist_entry)
+                continue
+            else:
+                # get follower_row, can be None if user doesn't follow us:
+                follower_row = self.db_get_follower(flist_username)
+
+                follow_back_expired = datetime.now() > flist_following_row.established + follow_back_hiatus
+                mutual_follow_expired = datetime.now() > flist_following_row.established + mutual_expire_hiatus
+
+                if not mutual_follow_expired and follower_row:
+                    time_remaining = (flist_following_row.established + mutual_expire_hiatus) - datetime.now()
+                    self.log.info('Mutual expire hiatus for user {} not reached, {} left.'
+                                    .format(flist_username, time_remaining))
+                    if self.flist_is_last(flist_entry):
+                        self.log.info('List end encountered, stopping.')
+                        return unfollow_count
+                    flist_entry = self.flist_next(flist_entry)
+                    continue
+                elif not follow_back_expired:
+                    time_remaining = (flist_following_row.established + follow_back_hiatus) - datetime.now()
+                    self.log.info('Follow back hiatus for user {} not reached, {} left.'
+                                    .format(flist_username, time_remaining))
+                    if self.flist_is_last(flist_entry):
+                        self.log.info('List end encountered, stopping.')
+                        return unfollow_count
+                    flist_entry = self.flist_next(flist_entry)
+                    continue
+
+                if mutual_follow_expired and follower_row:
+                    self.log.info('Mutual follow expired for user {}, unfollowing.'
+                                    .format(flist_username))
+                elif follow_back_expired:
+                    self.log.info('Follow expired for user {}, unfollowing.'
+                                    .format(flist_username))
+                else:
+                    AppUnexpectedStateException('Unfollow in unexpected state, please examine!')
+
+                flist_button = self.flist_button(flist_entry)
+                flist_button.click()
+
+                try:
+                    self.flist_button_wait_not_following(flist_button)
+                except TimeoutException:
+                    self.log.error('Follow state for {} not changed to unfollwed, account may be restricted, stopping.')
+                    return unfollow_count
+
+                # update database:
+                new_unfollowed_row = self.db_new_unfollowed(flist_username)
+                self.session.add(new_unfollowed_row)
+                self.session.delete(flist_following_row)
+                self.session.commit()
+
+                unfollow_count += 1
+                self.sleepmsrange(self.action_timeout)
+
+            flist_entry = self.flist_next(flist_entry)
+        return unfollow_count
+
+    def update_following(self):
+        self.goto_following_page()
+
+        flist_entry = self.flist_first()
+        entries_added = 0
+
+        while True:
+            if self.flist_is_empty(flist_entry):
+                self.log.info('List end encountered, stopping.')
+                return entries_added
+
+            self.scrollto_element(flist_entry)
+
+            flist_username = self.flist_username(flist_entry)
+            flist_following_row = self.db_get_following(flist_username)
+            if flist_following_row is None:
+                self.log.info('Adding {} to following.'.format(flist_username))
+                new_following_row = self.db_new_following(flist_username)
+                self.session.add(new_following_row)
+                self.session.commit()
+                entries_added += 1
+
+            if self.flist_is_last(flist_entry):
+                self.log.info('List end encountered, stopping.')
+                return entries_added
+
+            flist_entry = self.flist_next(flist_entry)
+
+    def update_followers(self):
+        self.goto_followers_page()
+
+        flist_entry = self.flist_first()
+        entries_added = 0
+
+        while True:
+            if self.flist_is_empty(flist_entry):
+                self.log.info('List end encountered, stopping.')
+                return entries_added
+
+            self.scrollto_element(flist_entry)
+
+            flist_username = self.flist_username(flist_entry)
+            flist_follower_row = self.db_get_follower(flist_username)
+            if flist_follower_row is None:
+                self.log.info('Adding {} to followers.'.format(flist_username))
+                new_follower_row = self.db_new_follower(flist_username)
+                self.session.add(new_follower_row)
+                self.session.commit()
+                entries_added += 1
+
+            if self.flist_is_last(flist_entry):
+                self.log.info('List end encountered, stopping.')
+                return entries_added
+
+            flist_entry = self.flist_next(flist_entry)
+
 
 # app state exceptions:
-
 
 class AppException(Exception):
     "Base taciturn app handler exception"

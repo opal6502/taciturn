@@ -28,7 +28,6 @@ from datetime import datetime
 
 from taciturn.applications.base import (
     FollowerApplicationHandler,
-    ApplicationWebElements,
     AppDataAnchorMissingException,
     AppUnexpectedStateException,
     AppLoginException,
@@ -60,243 +59,81 @@ class TwitterHandler(FollowerApplicationHandler):
     application_asset_dirname = 'twitter'
     default_profile_image = 'default_profile_reasonably_small.png'
 
-    follow_random_wait = (10, 60)
-
-    def __init__(self, logger, options, db_session, app_account, driver=None, elements=None):
-        super().__init__(logger, options, db_session, app_account, driver, TwitterHandlerWebElements)
+    def __init__(self, logger, options, db_session, app_account, driver=None):
+        super().__init__(logger, options, db_session, app_account, driver)
         self.log.info('Starting twitter app handler.')
 
-        self.follow_back_hiatus = self.config['app:twitter']['follow_back_hiatus']
-        self.unfollow_hiatus = self.config['app:twitter']['unfollow_hiatus']
-        self.action_timeout = self.config['app:twitter']['action_timeout']
-        self.mutual_expire_hiatus = self.config['app:twitter']['mutual_expire_hiatus']
+    def login(self):
+        self.goto_login_page()
 
-        self.init_webdriver()
-        self.goto_homepage()
+        login_wait = self.new_wait(timeout=10)
+
+        username_input_selector = (By.XPATH, '//div[@aria-hidden="false"]//form[@action="/sessions"]'
+                                             '//input[@name="session[username_or_email]"]')
+        login_wait.until(EC.presence_of_element_located(username_input_selector))\
+            .send_keys(self.app_username)
+
+        password_input_selector = (By.XPATH, '//div[@aria-hidden="false"]//form[@action="/sessions"]'
+                                             '//input[@name="session[password]"]')
+        login_wait.until(EC.presence_of_element_located(password_input_selector))\
+            .send_keys(self.app_password)
+
+        login_button_selector = (By.XPATH, '//div[@aria-hidden="false"]//form[@action="/sessions"]'
+                                           '//span/span[contains(.,"Log in")]')
+        login_wait.until(EC.presence_of_element_located(login_button_selector))\
+            .click()
+
+        # use this to verify login ...
+        self._home_profile_link()
+        
+        self.log.info('Logged in.')
+
+    def _home_profile_link(self):
+        # //*[@id="react-root"]/div/div/div[2]/header/div/div/div/div[1]/div[2]/nav/a[7]
+        # nav aria-label="Primary"
+        # a aria-label="Profile"
+        profile_link_locator = (By.XPATH, '//nav[@aria-label="Primary"]/a[@aria-label="Profile"]')
+        return self.new_wait(timeout=10).until(EC.presence_of_element_located(profile_link_locator))
 
     def goto_homepage(self):
         homepage_link = self.application_url + '/home'
         self.log.info('Going to home page: {}'.format(homepage_link))
         self.driver.get(homepage_link)
 
-    def goto_user_page(self):
-        self.driver.get(self.application_url + '/home')
-        profile_link = self.e.home_profile_link().get_attribute('href')
-        self.log.info('Going to page: {}'.format(profile_link))
-        self.driver.get(profile_link)
+    def goto_profile_page(self, user_name=None):
+        if user_name is None:
+            self.driver.get(self.application_url + '/home')
+            profile_link = self._home_profile_link().get_attribute('href')
+            self.log.info('Going to page: {}'.format(profile_link))
+            self.driver.get(profile_link)
+        else:
+            user_profile_link = '{}/{}'.format(self.application_url, user_name)
+            self.log.info('Going to page: {}'.format(user_profile_link))
+            self.driver.get(user_profile_link)
 
-    def goto_following_page(self, target_account=None):
-        if target_account is None:
-            self.log.info('Going to our following page.')
-            self.goto_user_page()
+    def goto_following_page(self, user_name=None):
+        if user_name is None:
+            self.log.info('Going to user following page.')
+            self.goto_profile_page()
             locator = (By.XPATH, '//*[@id="react-root"]//div[1]/a/span[2]/span[text()="Following"]')
-            self.new_wait(self.driver, timeout=60)\
+            self.new_wait(timeout=10)\
                    .until(EC.presence_of_element_located(locator)).click()
         else:
-            target_link = '{}/{}/following'.format(self.application_url, target_account)
-            self.log.info('Going to page: {}'.format(target_link))
-            self.driver.get(target_link)
+            user_following_link = '{}/{}/following'.format(self.application_url, user_name)
+            self.log.info('Going to page: {}'.format(user_following_link))
+            self.driver.get(user_following_link)
 
-    def goto_followers_page(self, target_account=None):
-        if target_account is None:
-            self.log.info('Going to our followers page.')
-            self.goto_user_page()
+    def goto_followers_page(self, user_name=None):
+        if user_name is None:
+            self.log.info('Going to user followers page.')
+            self.goto_profile_page()
             locator = (By.XPATH, '//*[@id="react-root"]//div[2]/a/span[2]/span[text()="Followers"]')
-            self.new_wait(self.driver, timeout=60)\
+            self.new_wait(timeout=10)\
                    .until(EC.presence_of_element_located(locator)).click()
         else:
-            target_link = '{}/{}/followers'.format(self.application_url, target_account)
-            self.log.info('Going to page: {}'.format(target_link))
-            self.driver.get(target_link)
-
-    def login(self):
-        # enter username and password:
-        self.driver.get(self.application_login_url)
-
-        self.e.login_username_input().send_keys(self.app_username)
-        self.e.login_password_input().send_keys(self.app_password)
-        self.e.login_button().click()
-        # use this to verify login ...
-        self.e.home_profile_link()
-        
-        self.log.info('Logged in.')
-
-    def start_following(self, target_account, quota=None, unfollow_hiatus=None):
-        print("start_following: starting up ...")
-        # for a bit of misdirection ;)
-        # self.goto_homepage()
-        # sleep(2)
-        # self.goto_user_page()
-        # sleep(2)
-        self.driver.get("{}/{}".format(self.application_url, target_account))
-        sleep(2)
-
-        print("start_following: going to target account ...")
-
-        # ... then get the page we want:
-        self.driver.get("{}/{}/followers".format(self.application_url, target_account))
-
-        # self.e.followers_tab_link()
-        tab_overlap_y = self.e.followers_tab_overlap()
-
-        unfollow_hiatus = unfollow_hiatus or self.unfollow_hiatus
-        # max_scan_count = 10
-        followed_count = 0
-
-        follower_entry = self.e.first_follower_entry()
-        print("follower_entry =", follower_entry)
-
-        while quota is None or followed_count < quota:
-
-            self.scrollto_element(follower_entry, offset=tab_overlap_y)
-            if self.e.is_followers_end(follower_entry):
-                print("List end encountered, stopping. (top)")
-                if DEBUG_HALT_EXCEPTION:
-                    raise RuntimeError("Stopping execution!")
-                return followed_count
-
-            # extract entry fields, continue'ing asap to avoid unnecessary work ...
-
-            entry_username = self.e.follower_username(follower_entry).text
-
-            # check to see if we've unfollowed this user within the unfollow_hiatus time:
-            unfollowed = self.session.query(Unfollowed).filter(
-                                            and_(Unfollowed.name == entry_username,
-                                                 Unfollowed.user_id == self.app_account.user_id,
-                                                 Unfollowed.application_id == Application.id,
-                                                 Application.name == self.application_name))\
-                                            .one_or_none()
-            if unfollowed is not None and datetime.now() < unfollowed.established + self.unfollow_hiatus:
-                time_remaining = (unfollowed.established + self.unfollow_hiatus) - datetime.now()
-                print("Followed/unfollowed too recently, can follow again after", time_remaining)
-                follower_entry = self.e.next_follower_entry(follower_entry)
-                continue
-
-            # self.scrollto_element(follower_entry, offset=tab_overlap_y)
-
-            if self.in_blacklist(entry_username):
-                print("{} is in blacklist, skip ...")
-                follower_entry = self.e.next_follower_entry(follower_entry)
-                continue
-
-            entry_button = self.e.follower_button(follower_entry)
-            # already following, skip:1
-            if entry_button.text in BUTTON_TEXT_FOLLOWING:
-                print("start_following: already following, skip ...")
-                # XXX cross reference with database here?
-                follower_entry = self.e.next_follower_entry(follower_entry)
-                continue
-            # default image, skip:
-            entry_image_src = self.e.follower_image(follower_entry).get_attribute('src')
-            entry_is_default_image = self.is_default_image(entry_image_src)
-            if entry_is_default_image:
-                print("start_following: image is default, skip ...")
-                follower_entry = self.e.next_follower_entry(follower_entry)
-                continue
-
-            entry_button_text = entry_button.text
-
-            print("start_following: entry_username =", entry_username)
-            print("start_following: entry_button_text =", entry_button_text)
-            print("start_following: entry_button_text default? ", entry_is_default_image)
-
-            # try to follow:
-            if entry_button_text in BUTTON_TEXT_NOT_FOLLOWING:
-                print("start_following: checking records before following ...")
-                # check to see if we're already (supposed to be following) this user:
-                already_following = self.session.query(Following) \
-                    .filter(and_(Following.name == entry_username,
-                                 Following.user_id == self.app_account.user_id,
-                                 Following.application_id == self.app_account.application_id)) \
-                    .one_or_none()
-                # if we find a record, it's contradicting what twitter is telling us, so delete it:
-                # XXX this probably means a locked account has refused our request, and we should
-                # add it to unfollowed for a long timeout ...
-                if already_following is not None:
-                    print("Warning: not followed user '{}' already recorded as following?"
-                          "  Moving to unfollowed.".format(entry_username))
-
-                    new_unfollowed = Unfollowed(name=already_following.name,
-                                                established=datetime.now(),
-                                                user_id=already_following.user_id,
-                                                application_id=already_following.application_id)
-                    self.session.add(new_unfollowed)
-                    self.session.delete(already_following)
-                    self.session.commit()
-
-                    follower_entry = self.e.next_follower_entry(follower_entry)
-                    continue
-
-                # check to see if we've recently unfollowed this user:
-                already_unfollowed = self.session.query(Unfollowed) \
-                    .filter(and_(Unfollowed.user_id == self.app_account.user_id,
-                                 Unfollowed.application_id == self.app_account.application_id,
-                                 Unfollowed.name == entry_username)).one_or_none()
-                # then check if unfollow was recent:
-                if already_unfollowed is not None and \
-                        datetime.now() < already_unfollowed.established + unfollow_hiatus:
-                    print("Already followed and unfollowed this user '{}', "
-                          "will follow again after {}".format(entry_username,
-                                                              already_unfollowed.established + unfollow_hiatus))
-                    follower_entry = self.e.next_follower_entry(follower_entry)
-                    continue
-
-                print("Clicking 'Follow' button ...")
-
-                entry_button.click()
-                sleep(1)
-
-                # XXX bug: if the blocked notify shows up, it will stay here for several seconds
-                # and followers below that entry will show up as blocked unless we wait for the blocked
-                # popover to go away.
-                if self.e.is_follower_blocked_notify_present():
-                    print("Blocked by user.")
-                    WebDriverWait(self.driver, timeout=60).until(self.e.blocked_notice_gone_cb())
-                    follower_entry = self.e.next_follower_entry(follower_entry)
-                    continue
-
-                if self.e.is_follower_limit_notify_present():
-                    print("Unable to follow more at this time!")
-                    return followed_count
-
-                # verify follow button indicates follow was successful ...
-                for try_n in range(1, self.default_load_retries+1):
-                    try:
-                        button_text = self.e.follower_button(follower_entry).text
-                        if button_text in BUTTON_TEXT_FOLLOWING:
-                            print("Follow verified.")
-                            break
-                    except (NoSuchElementException, StaleElementReferenceException) as e:
-                        if try_n == self.default_load_retries:
-                            print("Follow button not verified, returning!")
-                            return followed_count
-
-                new_following = Following(name=entry_username,
-                                          application_id=self.app_account.application_id,
-                                          user_id=self.app_account.user_id,
-                                          established=datetime.now())
-
-                # if there was an unfollowed entry, remove it now:
-                if unfollowed is not None:
-                    self.session.delete(unfollowed)
-
-                self.session.add(new_following)
-                self.session.commit()
-                print("Follow added to database.")
-
-                followed_count += 1
-
-            elif entry_button_text in BUTTON_TEXT_FOLLOWING:
-                # do nothing!
-                pass
-            else:
-                raise AppUnexpectedStateException(
-                    "Entry button for '{}' says '{}'?".format(entry_username, entry_button.text))
-
-            self.sleepmsrange(self.action_timeout)
-            follower_entry = self.e.next_follower_entry(follower_entry)
-
-        return followed_count
+            user_followers_link = '{}/{}/followers'.format(self.application_url, user_name)
+            self.log.info('Going to page: {}'.format(user_followers_link))
+            self.driver.get(user_followers_link)
 
     def update_followers(self):
         # print(" GET {}/{}/following".format(self.application_url, self.app_username))
@@ -620,7 +457,7 @@ class TwitterHandler(FollowerApplicationHandler):
 
     def flist_is_verified(self, flist_entry):
         locator = (By.XPATH, './div/div/div/div[2]/div[1]/div[1]/a/div/div[1]/div[2]/'
-                             '*[local-name() = "svg" and @aria-label="Verified account"]')
+                             '*[local-name()="svg" and @aria-label="Verified account"]')
         try:
             self.new_wait(timeout=0).until(EC.presence_of_element_located(locator))
             return True
@@ -637,13 +474,21 @@ class TwitterHandler(FollowerApplicationHandler):
     def flist_button_is_not_following(self, flist_button_text):
         return flist_button_text in BUTTON_TEXT_NOT_FOLLOWING
 
+    def flist_button_wait_following(self, flist_button):
+        self.log.debug('Waiting for entry to be in following state.')
+        return self.new_wait(flist_button).until(lambda e: e.text in BUTTON_TEXT_FOLLOWING)
+
+    def flist_button_wait_not_following(self, flist_button):
+        self.log.debug('Waiting for entry to be in non-following state.')
+        return self.new_wait(flist_button).until(lambda e: e.text in BUTTON_TEXT_NOT_FOLLOWING)
+
     def flist_header_overlap_y(self):
         header_locator = (By.XPATH, '(//div[@data-testid="primaryColumn"]/div/div)[1]')
         header_element = self.new_wait().until(EC.presence_of_element_located(header_locator))
         return header_element.size['height']
 
     def flist_is_blocked_notice(self):
-        popover = self._bottom_notify_popover()
+        popover = self._flist_bottom_notify_popover()
         if popover is None:
             return False
         popover_text = popover.text
@@ -654,7 +499,7 @@ class TwitterHandler(FollowerApplicationHandler):
         return False
 
     def flist_is_follow_limit_notice(self):
-        popover = self._bottom_notify_popover()
+        popover = self._flist_bottom_notify_popover()
         if popover is None:
             return False
         popover_text = popover.text
@@ -662,7 +507,7 @@ class TwitterHandler(FollowerApplicationHandler):
             return True
         return False
 
-    def _bottom_notify_popover(self):
+    def _flist_bottom_notify_popover(self):
         locator = (By.XPATH, '//*[@id="react-root"]/div/div/div[1]/div[2]/div/div/div[1]/span')
         try:
             return self.new_wait(timeout=0).until(EC.presence_of_element_located(locator))
@@ -670,7 +515,7 @@ class TwitterHandler(FollowerApplicationHandler):
             return None
 
 
-class TwitterHandlerWebElements(ApplicationWebElements):
+class TwitterHandlerWebElements():
     # //*[@id="react-root"]/div/div/div[2]/main/div/div/div/div[1]/div/div[2]/section/div/div/div/div[N]
     # /section aria-labeledby="accessible-list-0" /div aria-label="Timeline: Followers"
     _follower_entries_xpath_prefix = '//section[starts-with(@aria-labelledby, "accessible-list-")]'\

@@ -49,9 +49,6 @@ class FacebookHandler(BaseApplicationHandler):
     def __init__(self, options, db_session, app_account, driver=None, elements=None):
         super().__init__(options, db_session, app_account, driver, FacebookHandlerWebElements)
 
-        self.init_webdriver()
-        self.goto_homepage()
-
     def login(self):
         self.driver.get(self.application_login_url)
 

@@ -60,8 +60,6 @@ class SoundcloudHandler(FollowerApplicationHandler):
 
     # user_agent = 'Mozilla/5.0 (iPad; CPU OS 12_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148'
 
-    follow_random_wait = (10, 60)
-
     def __init__(self, options, db_session, app_account, driver=None, elements=None):
         super().__init__(options, db_session, app_account, driver, SoundcloudHandlerWebElements)
 
@@ -114,11 +112,11 @@ class SoundcloudHandler(FollowerApplicationHandler):
 
     def login(self):
         if self.headless_mode:
-            self.login_headless()
+            self._login_headless_mode()
         else:
-            self.login_head()
+            self._login_head_mode()
 
-    def login_headless(self):
+    def _login_headless_mode(self):
         self.driver.get('https://accounts.google.com/Login')
 
         print('Loggin in through google ...')
@@ -166,7 +164,7 @@ class SoundcloudHandler(FollowerApplicationHandler):
 
         self.e.close_if_pro_lightbox()
 
-    def login_head(self):
+    def _login_head_mode(self):
         # go to google login first ...
         print("Non-headless login mode!")
         print('Loggin in through google ...')

@@ -45,7 +45,7 @@ class TwitterFollowJob(TaciturnJob):
         twitter_handler = TwitterHandler(self.log, self.options, self.session, twitter_account)
         twitter_handler.login()
 
-        TaskExecutor(call=lambda: twitter_handler.general_start_following(self.target_account, quota=round_max_follows),
+        TaskExecutor(call=lambda: twitter_handler.start_following(self.target_account, quota=round_max_follows),
                      name=self.__jobname__,
                      retries=1,
                      quota=round_max_follows,

@@ -75,13 +75,8 @@ class BandcampHandler(BaseApplicationHandler):
     application_url = "https://bandcamp.com"
     application_login_url = "https://bandcamp.com/login"
 
-    implicit_default_wait = 60
-
-    def __init__(self, options, db_session, app_account, driver=None, elements=None):
-        super().__init__(options, db_session, app_account, driver, BandcampHandlerWebElements)
-
-        self.init_webdriver()
-        self.goto_homepage()
+    def __init__(self, options, db_session, app_account, driver=None):
+        super().__init__(options, db_session, app_account, driver)
 
     def login(self):
         raise NotImplementedError("Why would you need this, anyway?")

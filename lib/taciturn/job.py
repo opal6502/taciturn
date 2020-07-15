@@ -47,6 +47,7 @@ class TaciturnJob(ABC):
             self.session = Session(bind=self.config['database_engine'])
         else:
             raise TypeError("No 'database_engine' provided by config!")
+
         if self.appnames is None and not isinstance(self.appnames, list):
             raise TypeError('Job needs to define self.appnames as a list of apps the job interacts with')
         if self.options.user is None:
@@ -60,24 +61,32 @@ class TaciturnJob(ABC):
         self.job_id = self.new_job_id()
 
         # initialize logging here:
-        self.log = logging.getLogger()
-
         if self.config['log_individual_jobs'] is True:
             log_file_path = os.path.join(self.config['log_dir'], '{}.log'.format(self))
         else:
             log_file_path = os.path.join(self.config['log_dir'], self.config['log_file'])
 
+        log_level = self.config.get('log_level') or logging.INFO
+        self.log = logging.getLogger('taciturn_log')
+        self.log.setLevel(log_level)
+
         lf = logging.Formatter(self.config['log_format'].format(job_name=str(self)))
 
         fh = logging.FileHandler(log_file_path)
-        fh.setLevel(self.config['log_level'])
+        fh.setLevel(log_level)
         fh.setFormatter(lf)
 
         sh = logging.StreamHandler()
-        sh.setLevel(self.config['log_level'])
+        sh.setLevel(log_level)
         sh.setFormatter(lf)
 
-        self.log.info('Job initialized.')
+        self.log.addHandler(sh)
+        self.log.addHandler(fh)
+
+        self.log.info('Initializing taciturn job.')
+
+
+
 
     def __str__(self):
         return '{}.{}'.format(self.__jobname__, self.job_id)

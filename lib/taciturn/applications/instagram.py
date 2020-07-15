@@ -62,27 +62,19 @@ class InstagramHandler(FollowerApplicationHandler):
     application_login_url = application_url
 
     # sent an iPhone user agent!
-    user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 6_0 like Mac OS X) AppleWebKit/536.26 " \
-               "(KHTML, like Gecko) Version/6.0 Mobile/10A5376e Safari/8536.25"
+    webdriver_user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 6_0 like Mac OS X) AppleWebKit/536.26 " \
+                             "(KHTML, like Gecko) Version/6.0 Mobile/10A5376e Safari/8536.25"
 
     application_asset_dirname = 'instagram'
     default_profile_image = 'default-profile-pic.jpg'
 
-    implicit_default_wait = 60
-
-    follow_random_wait = (10, 60)
-
-    def __init__(self, options, db_session, app_account, driver=None, elements=None):
-        super().__init__(options, db_session, app_account, driver, InstagramHandlerWebElements)
+    def __init__(self, options, db_session, app_account, driver=None):
+        super().__init__(options, db_session, app_account, driver)
 
         self.follow_back_hiatus = self.config['app:instagram']['follow_back_hiatus']
         self.unfollow_hiatus = self.config['app:instagram']['unfollow_hiatus']
         self.action_timeout = self.config['app:instagram']['action_timeout']
         self.mutual_expire_hiatus = self.config['app:instagram']['mutual_expire_hiatus']
-
-        self.init_webdriver(user_agent=self.user_agent)
-
-        self.goto_homepage()
 
     def goto_homepage(self):
         self.driver.get(self.application_url)
