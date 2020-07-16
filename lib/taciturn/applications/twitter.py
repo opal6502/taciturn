@@ -88,6 +88,14 @@ class TwitterHandler(FollowerApplicationHandler):
         
         self.log.info('Logged in.')
 
+    def _if_stale_login_lightbox_refresh(self):
+        lightbox_text_locator = (By.XPATH, '//*[@id="react-root"]//span[text()="Don’t miss what’s happening"]')
+        try:
+            if self.new_wait(timeout=3).until(EC.presence_of_element_located(lightbox_text_locator)):
+                self.driver.refresh()
+        except TimeoutException:
+            pass
+
     def _home_profile_link(self):
         # //*[@id="react-root"]/div/div/div[2]/header/div/div/div/div[1]/div[2]/nav/a[7]
         # nav aria-label="Primary"
@@ -99,6 +107,7 @@ class TwitterHandler(FollowerApplicationHandler):
         homepage_link = self.application_url + '/home'
         self.log.info('Going to home page: {}'.format(homepage_link))
         self.driver.get(homepage_link)
+        self._if_stale_login_lightbox_refresh()
 
     def goto_profile_page(self, user_name=None):
         if user_name is None:
@@ -110,6 +119,7 @@ class TwitterHandler(FollowerApplicationHandler):
             user_profile_link = '{}/{}'.format(self.application_url, user_name)
             self.log.info('Going to page: {}'.format(user_profile_link))
             self.driver.get(user_profile_link)
+        self._if_stale_login_lightbox_refresh()
 
     def goto_following_page(self, user_name=None):
         if user_name is None:
@@ -122,6 +132,7 @@ class TwitterHandler(FollowerApplicationHandler):
             user_following_link = '{}/{}/following'.format(self.application_url, user_name)
             self.log.info('Going to page: {}'.format(user_following_link))
             self.driver.get(user_following_link)
+        self._if_stale_login_lightbox_refresh()
 
     def goto_followers_page(self, user_name=None):
         if user_name is None:
@@ -134,228 +145,54 @@ class TwitterHandler(FollowerApplicationHandler):
             user_followers_link = '{}/{}/followers'.format(self.application_url, user_name)
             self.log.info('Going to page: {}'.format(user_followers_link))
             self.driver.get(user_followers_link)
-
-    def update_followers(self):
-        # print(" GET {}/{}/following".format(self.application_url, self.app_username))
-        self.goto_followers_page()
-
-        follower_entry = self.e.first_follower_entry()
-        print("follower_entry =", follower_entry)
-        entries_added = 0
-
-        while True:
-            # check to see if this looks like the end:
-            if self.e.is_followers_end(follower_entry):
-                print("List end encountered, stopping.")
-                if DEBUG_HALT_EXCEPTION:
-                    raise RuntimeError("Stopping execution!")
-                    return entries_added
-
-            # check to see if entry is in the database:
-            self.scrollto_element(follower_entry)
-            follower_username = self.e.follower_username(follower_entry).text
-            print("Scanning {} ...".format(follower_username))
-
-            following_db = self.session.query(Follower)\
-                                    .filter(and_(Follower.user_id == self.app_account.user_id,
-                                                 Follower.application_id == self.app_account.application_id,
-                                                 Follower.name == follower_username
-                                            )).one_or_none()
-
-            if following_db is None:
-                print("No entry for '{}', creating.".format(follower_username))
-                new_follower = Follower(name=follower_username,
-                                        established=datetime.now(),
-                                        application_id=self.app_account.application_id,
-                                        user_id=self.app_account.user_id)
-                self.session.add(new_follower)
-                self.session.commit()
-                entries_added += 1
-
-            follower_entry = self.e.next_follower_entry(follower_entry)
-            # try:
-            #     follower_entry = self.e.next_follower_entry(follower_entry)
-            # except NoSuchElementException:
-            #     break
-
-    def update_following(self):
-        # print(" GET {}/{}/following".format(self.application_url, self.app_username))
-        self.goto_following_page()
-
-        following_entry = self.e.first_following_entry()
-        print("following_entry =", following_entry)
-        entries_added = 0
-
-        while True:
-            if self.e.is_followers_end(following_entry):
-                print("List end encountered, stopping.")
-                if DEBUG_HALT_EXCEPTION:
-                    raise RuntimeError("Stopping execution!")
-                return entries_added
-
-            # check to see if entry is in the database:
-            self.scrollto_element(following_entry)
-
-            following_username = self.e.follower_username(following_entry).text
-            print("Scanning {} ...".format(following_username))
-
-            following_db = self.session.query(Following)\
-                                    .filter(and_(Following.user_id == self.app_account.user_id,
-                                                 Following.application_id == self.app_account.application_id,
-                                                 Following.name == following_username
-                                            )).one_or_none()
-
-            if following_db is None:
-                print("No entry for '{}', creating.".format(following_username))
-                new_following = Following(name=following_username,
-                                          established=datetime.now(),
-                                          application_id=self.app_account.application_id,
-                                          user_id=self.app_account.user_id)
-                self.session.add(new_following)
-                self.session.commit()
-                entries_added += 1
-
-            follower_entry = self.e.next_follower_entry(following_entry)
-
-    def start_unfollowing(self, quota=None, follow_back_hiatus=None, mutual_expire_hiatus=None):
-        # print(" GET {}/{}/following".format(self.application_url, self.app_username))
-        self.goto_following_page()
-
-        following_entry = self.e.first_following_entry()
-        print("following_entry =", following_entry)
-        unfollow_count = 0
-        follow_back_hiatus = follow_back_hiatus or self.follow_back_hiatus
-        mutual_expire_hiatus = mutual_expire_hiatus or self.mutual_expire_hiatus
-        tab_overlap_y = self.e.followers_tab_overlap()
-
-        print("start_unfollowing, mutual_expire_hiatus =", mutual_expire_hiatus)
-        print("start_unfollowing, follow_back_hiatus =", follow_back_hiatus)
-
-        while quota is None or quota > unfollow_count:
-            if self.e.is_followers_end(following_entry):
-                print("List end encountered, stopping. (top)")
-                if DEBUG_HALT_EXCEPTION:
-                    raise RuntimeError("Stopping execution!")
-                return unfollow_count
-
-            self.scrollto_element(following_entry, offset=tab_overlap_y)
-
-            following_username = self.e.follower_username(following_entry).text
-            print("Scanning {} ...".format(following_username))
-
-            # if in whitelist, skip ...
-            if self.in_whitelist(following_username):
-                print("'{}' in whitelist, skipping ...".format(following_username))
-                following_entry = self.e.next_follower_entry(following_entry)
-                continue
-
-            # get following entry from db ...
-            following_db = self.session.query(Following) \
-                .filter(and_(Following.user_id == self.app_account.user_id,
-                             Following.application_id == self.app_account.application_id,
-                             Following.name == following_username
-                             )).one_or_none()
-
-            # if entry not in db, add with timestamp and skip ...
-            if following_db is None:
-                print("No entry for '{}', creating.".format(following_username))
-                new_following = Following(name=following_username,
-                                          established=datetime.now(),
-                                          application_id=self.app_account.application_id,
-                                          user_id=self.app_account.user_id)
-                self.session.add(new_following)
-                self.session.commit()
-                print("Skipping newly scanned follower ...")
-                following_entry = self.e.next_follower_entry(following_entry)
-                continue
-            # follow in db, check and delete, if now > then + hiatus time ...
-            else:
-                follows_me = self.e.follower_follows_me(following_entry)
-
-                follow_back_expired = datetime.now() > following_db.established + follow_back_hiatus
-                mutual_follow_expired = datetime.now() > following_db.established + mutual_expire_hiatus
-
-                if not mutual_follow_expired and follows_me:
-                    time_remaining = (following_db.established + mutual_expire_hiatus) - datetime.now()
-                    print("Mutual expire hiatus not reached!  {} left!".format(time_remaining))
-                    following_entry = self.e.next_follower_entry(following_entry)
-                    continue
-                elif not follow_back_expired:
-                    time_remaining = (following_db.established + follow_back_hiatus) - datetime.now()
-                    print("Follow hiatus not reached!  {} left!".format(time_remaining))
-                    following_entry = self.e.next_follower_entry(following_entry)
-                    continue
-
-                if mutual_follow_expired and follows_me:
-                    print("Mutual follow expired, unfollowing ...")
-                elif follow_back_expired:
-                    print("Follow expired, unfollowing ...")
-                else:
-                    AppUnexpectedStateException("Unfollow in unexpected state, please examine!")
-
-                list_following_button = self.e.follower_button(following_entry)
-                list_following_button_text = list_following_button.text
-                if list_following_button_text not in BUTTON_TEXT_FOLLOWING:
-                    raise AppUnexpectedStateException(
-                        "Unfollow button for '{}' says '{}'?".format(following_username,
-                                                                     list_following_button_text))
-                list_following_button.click()
-                lb_following_button = self.e.unfollow_lightbox_button()
-                lb_following_button.click()
-
-                # we need to wait and make sure button goes back to unfollowed state ...
-                WebDriverWait(following_entry, 60).until(
-                    lambda e: self.e.follower_button(e).text in BUTTON_TEXT_NOT_FOLLOWING)
-
-                # create a new unfollow entry:
-                new_unfollowed = Unfollowed(name=following_db.name,
-                                            established=datetime.now(),
-                                            user_id=following_db.user_id,
-                                            application_id=following_db.application_id)
-
-                self.session.add(new_unfollowed)
-                self.session.delete(following_db)
-
-                self.session.commit()
-                unfollow_count += 1
-
-                self.sleepmsrange(self.action_timeout)
-
-            following_entry = self.e.next_follower_entry(following_entry)
-
-        return unfollow_count
+        self._if_stale_login_lightbox_refresh()
 
     def post_tweet(self, tweet_body, tweet_image=None):
-        compose_tweet_button = self.driver.find_element(By.XPATH, '//a[@href="/compose/tweet" and @role="button"]')
-        compose_tweet_button.click()
+        if len(tweet_body) <= 60:
+            tweet_body_preview = tweet_body
+        else:
+            tweet_body_preview = tweet_body[:60]
+        if tweet_image is not None:
+            tweet_attachment = '[with attachment]'
+        else:
+            tweet_attachment = ''
+        self.log.info('Posting tweet for message: "{}..." {}'
+                        .format(tweet_body_preview, tweet_attachment))
 
-        tweet_text_input = self.driver.find_element(By.XPATH, '//div[@aria-label="Tweet text"]')
+        post_wait = self.new_wait(timeout=90)
+        compose_tweet_button = (By.XPATH, '//a[@href="/compose/tweet" and @role="button"]')
+        post_wait.until(EC.presence_of_element_located(compose_tweet_button))\
+            .click()
+
+        tweet_text_input_locator = (By.XPATH, '//div[@aria-label="Tweet text"]')
+        tweet_text_input_element = post_wait.until(EC.presence_of_element_located(tweet_text_input_locator))
         truncated_tweet_body = self.truncate_tweet(tweet_body)
-        tweet_text_input.send_keys(truncated_tweet_body)
-        tweet_text_input.send_keys(Keys.ESCAPE)
+        tweet_text_input_element.send_keys(truncated_tweet_body)
+        tweet_text_input_element.send_keys(Keys.ESCAPE)
 
         if tweet_image is not None:
-            tweet_image_input = self.driver.find_element(
-                By.XPATH, '//div[@aria-label="Add photos or video"]/following-sibling::input[@type="file"]')
-            tweet_image_input.send_keys(tweet_image)
+            tweet_image_input_locator = (By.XPATH, '//div[@aria-label="Add photos or video"]'
+                                                   '/following-sibling::input[@type="file"]')
+            tweet_image_input_element = post_wait.until(EC.presence_of_element_located(tweet_image_input_locator))
+            tweet_image_input_element.send_keys(tweet_image)
 
-            # //div[@aria-label="Media" and @role="group"]//img
-            tweet_image_attached = '//div[@aria-label="Media" and @role="group"]//img'
-            WebDriverWait(self.driver, timeout=60)\
-                .until(EC.presence_of_element_located((By.XPATH, tweet_image_attached)))
+            self.log.debug('Waiting for tweet image attachment.')
+            tweet_image_attached_locator = (By.XPATH, '//div[@aria-label="Media" and @role="group"]//img')
+            post_wait.until(EC.visibility_of_element_located(tweet_image_attached_locator))
+            self.log.debug('Tweet image attachment verified.')
 
-        submit_tweet_button = self.driver.find_element(
-            By.XPATH, '//div[@role="button"]//span[text()="Tweet"]')
-        self.scrollto_element(submit_tweet_button)
-        submit_tweet_button.click()
+        submit_tweet_button_locator = (By.XPATH, '//div[@role="button"]//span[text()="Tweet"]')
+        submit_tweet_button_element = post_wait.until(EC.presence_of_element_located(submit_tweet_button_locator))
+        self.scrollto_element(submit_tweet_button_element)
+        submit_tweet_button_element.click()
 
         # wait for the lightbox (x) to dissapear, to verify tweet sent ...
-        tweet_xbutton = self.driver.find_element(
-            By.XPATH, '//div[@aria-label="Close" and @role="button"]/div[@dir="auto"]')
-        WebDriverWait(self.driver, timeout=60).until(EC.staleness_of(tweet_xbutton))
+        tweet_lightbox_xbutton_locator = (By.XPATH, '//div[@aria-label="Close" and @role="button"]/div[@dir="auto"]')
+        tweet_lightbox_xbutton_element = post_wait.until(EC.presence_of_element_located(tweet_lightbox_xbutton_locator))
+        post_wait.until(EC.staleness_of(tweet_lightbox_xbutton_element))
+        self.log.info('Tweet submitted.')
 
-    @staticmethod
-    def truncate_tweet(tweet_text):
+    def truncate_tweet(self, tweet_text):
         # scan the tweet and determine length including links, and truncate at the last word:
         # all links are 23 chars long!
         scan_position = 0
@@ -399,10 +236,10 @@ class TwitterHandler(FollowerApplicationHandler):
                     effective_tweet_length += 1
 
         # debug:
-        print("truncate_tweet: len(tweet_text) =", len(tweet_text))
-        print("truncate_tweet: scan_position =", scan_position)
-        print("truncate_tweet: effective_tweet_length =", effective_tweet_length)
-        print("truncate_tweet: last_scanned_space =", last_scanned_space)
+        self.log.debug("truncate_tweet: len(tweet_text) =", len(tweet_text))
+        self.log.debug("truncate_tweet: scan_position =", scan_position)
+        self.log.debug("truncate_tweet: effective_tweet_length =", effective_tweet_length)
+        self.log.debug("truncate_tweet: last_scanned_space =", last_scanned_space)
 
         if effective_tweet_length <= tweet_limit:
             return tweet_text
@@ -414,10 +251,14 @@ class TwitterHandler(FollowerApplicationHandler):
 
     # XXX NEW 0.2a flist METHODS!
 
-    def flist_first(self, flist_name='Following'):
-        super().flist_first(flist_name)
+    def flist_first_from_following(self):
         locator = (By.XPATH, '//section[starts-with(@aria-labelledby, "accessible-list-")]'
-                             '/div[@aria-label="Timeline: {}"]/div/div/div[1]'.format(flist_name))
+                             '/div[@aria-label="Timeline: Following"]/div/div/div[1]')
+        return self.new_wait().until(EC.presence_of_element_located(locator))
+
+    def flist_first_from_followers(self):
+        locator = (By.XPATH, '//section[starts-with(@aria-labelledby, "accessible-list-")]'
+                             '/div[@aria-label="Timeline: Followers"]/div/div/div[1]')
         return self.new_wait().until(EC.presence_of_element_located(locator))
 
     def flist_next(self, flist_entry):
@@ -438,7 +279,7 @@ class TwitterHandler(FollowerApplicationHandler):
             pass
         # then, try to check for an empty node, will raise TimeoutException if not found:
         empty_locator = (By.XPATH, './div/div[not(node())]')
-        self.new_wait(timeout=30)\
+        self.new_wait(flist_entry, timeout=30)\
                 .until(EC.presence_of_element_located(empty_locator))
         return True
 
@@ -475,7 +316,6 @@ class TwitterHandler(FollowerApplicationHandler):
         return flist_button_text in BUTTON_TEXT_NOT_FOLLOWING
 
     def flist_button_wait_following(self, flist_button):
-        self.log.debug('Waiting for entry to be in following state.')
         return self.new_wait(flist_button).until(lambda e: e.text in BUTTON_TEXT_FOLLOWING)
 
     def flist_button_wait_not_following(self, flist_button):

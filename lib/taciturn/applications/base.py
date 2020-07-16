@@ -118,9 +118,9 @@ class BaseApplicationHandler(ABC):
         if self.options.driver:
             webdriver_type = self.options.driver[0]
         else:
-            webdriver_type = self.options.driver or self.config.get('selenium_webdriver')
+            webdriver_type = self.options.driver or self.config['selenium_webdriver']
 
-        self.log.info('Starting selenium with {} web driver'.format(webdriver_type))
+        self.log.info("Starting Selenium with '{}' web driver".format(webdriver_type))
 
         if webdriver_type is None or webdriver_type == 'chrome':
             from selenium.webdriver.chrome.options import Options
@@ -241,7 +241,7 @@ class BaseApplicationHandler(ABC):
             raise TypeError("sleepmsrange: takes one integer or a two-tuple of millisecond values.")
 
         duration = timedelta(seconds=sleep_duration)
-        self.log.info('Sleeping for {}.'.format(duration))
+        self.log.debug('Sleeping for {}.'.format(duration))
         time.sleep(sleep_duration)
 
     @staticmethod
@@ -352,12 +352,14 @@ class FollowerApplicationHandler(BaseApplicationHandler):
     # Follower list 'flist' processing methods:
 
     @abstractmethod
-    def flist_first(self, flist_name=None):
-        "get the first flist entry in an flist"
-        # input validation:
-        flist_choices = ('Followers', 'Following')
-        if flist_name not in flist_choices:
-            raise TypeError("flist_name choice not one of {}".format(', '.join(flist_choices)))
+    def flist_first_from_following(self):
+        "get the first flist entry in a following flist"
+        pass
+
+    @abstractmethod
+    def flist_first_from_followers(self):
+        "get the first flist entry in a followers flist"
+        pass
 
     @abstractmethod
     def flist_next(self, flist_entry):
@@ -431,17 +433,18 @@ class FollowerApplicationHandler(BaseApplicationHandler):
 
     def start_following(self, target_account, quota=None, unfollow_hiatus=None):
         "A generalized start_following method, made to be application-agnostic."
+        self.log.info('Starting following session.')
+        self.log.debug('Following quota = {}'.format(quota))
         self.goto_following_page(target_account)
 
         unfollow_hiatus = unfollow_hiatus or self.unfollow_hiatus
         header_overlap_y = self.flist_header_overlap_y()
-        flist_entry = self.flist_first()
+        flist_entry = self.flist_first_from_following()
         following_count = 0
 
         while quota is None or following_count < quota:
             self.scrollto_element(flist_entry, y_offset=header_overlap_y)
 
-            # twitter end-of-list detection, other applications should always return true:
             if self.flist_is_empty(flist_entry):
                 return following_count
 
@@ -528,6 +531,8 @@ class FollowerApplicationHandler(BaseApplicationHandler):
 
                 # verify that follow button indicates success:
                 try:
+                    self.log.debug('Waiting for {} to be in following state.'
+                                     .format(flist_username))
                     self.flist_button_wait_following(flist_button)
                 except TimeoutException:
                     self.log.info("Couldn't follow user {}, application limit probably hit, stopping."
@@ -562,18 +567,22 @@ class FollowerApplicationHandler(BaseApplicationHandler):
                 raise AppUnexpectedStateException(
                     "Entry button for '{}' says '{}'?".format(flist_username, flist_button_text))
 
+            if self.flist_is_last(flist_entry):
+                self.log.info('List end encountered, stopping.')
+                return following_count
             flist_entry = self.flist_next(flist_entry)
 
         return following_count
 
     def start_unfollowing(self, quota=None, follow_back_hiatus=None, mutual_expire_hiatus=None):
+        self.log.info('Starting unfollow session.')
         self.goto_following_page()
 
         follow_back_hiatus = follow_back_hiatus or self.follow_back_hiatus
         mutual_expire_hiatus = follow_back_hiatus or self.mutual_expire_hiatus
 
         header_overlap_y = self.flist_header_overlap_y()
-        flist_entry = self.flist_first()
+        flist_entry = self.flist_first_from_following()
         unfollow_count = 0
 
         while quota is None or unfollow_count < quota:
@@ -597,7 +606,8 @@ class FollowerApplicationHandler(BaseApplicationHandler):
             flist_following_row = self.db_get_following(flist_username)
 
             if flist_following_row is None:
-                print('No following entry for {}, creating record and skipping.')
+                print('No following entry for {}, creating record and skipping.'
+                        .format(flist_username))
                 new_following = self.db_new_following(flist_username)
                 self.session.add(new_following)
                 self.session.commit()
@@ -659,13 +669,18 @@ class FollowerApplicationHandler(BaseApplicationHandler):
                 unfollow_count += 1
                 self.sleepmsrange(self.action_timeout)
 
+            if self.flist_is_last(flist_entry):
+                self.log.info('List end encountered, stopping.')
+                return unfollow_count
             flist_entry = self.flist_next(flist_entry)
+
         return unfollow_count
 
     def update_following(self):
+        self.log.info('Updating following data.')
         self.goto_following_page()
 
-        flist_entry = self.flist_first()
+        flist_entry = self.flist_first_from_following()
         entries_added = 0
 
         while True:
@@ -691,9 +706,10 @@ class FollowerApplicationHandler(BaseApplicationHandler):
             flist_entry = self.flist_next(flist_entry)
 
     def update_followers(self):
+        self.log.info('Updating followers data.')
         self.goto_followers_page()
 
-        flist_entry = self.flist_first()
+        flist_entry = self.flist_first_from_followers()
         entries_added = 0
 
         while True:

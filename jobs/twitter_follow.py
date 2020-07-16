@@ -14,7 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with Tactiurn.  If not, see <https://www.gnu.org/licenses/>.
 
-from taciturn.job import TaciturnJob, TaskExecutor
+from taciturn.job import TaciturnJob, RoundTaskExecutor
 from taciturn.applications.twitter import TwitterHandler
 
 import sys
@@ -22,7 +22,7 @@ import sys
 
 class TwitterFollowJob(TaciturnJob):
     __jobname__ = 'twitter_follow'
-    appnames = ['twitter']
+    __appnames__ = ['twitter']
 
     def __init__(self, options, config=None):
         super().__init__(options, config)
@@ -45,13 +45,14 @@ class TwitterFollowJob(TaciturnJob):
         twitter_handler = TwitterHandler(self.log, self.options, self.session, twitter_account)
         twitter_handler.login()
 
-        TaskExecutor(call=lambda: twitter_handler.start_following(self.target_account, quota=round_max_follows),
-                     name=self.__jobname__,
-                     retries=1,
-                     quota=round_max_follows,
-                     max=daily_max_follows,
-                     stop_no_quota=self.stop_no_quota,
-                     period=day_length).run()
+        RoundTaskExecutor(call=lambda: twitter_handler.start_following(self.target_account, quota=round_max_follows),
+                          name=self.__jobname__,
+                          retries=1,
+                          quota=round_max_follows,
+                          max=daily_max_follows,
+                          stop_no_quota=self.stop_no_quota,
+                          period=day_length)\
+                        .run()
 
 
 job = TwitterFollowJob
