@@ -20,7 +20,7 @@
 
 from sqlalchemy.orm import Session
 
-from taciturn.config import load_config, supported_applications
+from taciturn.config import get_config, supported_applications
 
 from taciturn.db.base import (
     ORMBase,
@@ -43,7 +43,7 @@ from datetime import datetime
 print('> Taciturn database init script!')
 
 print('> Loading config ... ', end='')
-conf = load_config()
+conf = get_config()
 print('done.')
 
 print('> Database URL:', conf['database_url'])

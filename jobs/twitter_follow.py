@@ -24,12 +24,12 @@ class TwitterFollowJob(TaciturnJob):
     __jobname__ = 'twitter_follow'
     __appnames__ = ['twitter']
 
-    def __init__(self, options, config=None):
-        super().__init__(options, config)
-        if options.target is None:
-            self.log.error('you must specify a target account with -t account.')
+    def __init__(self):
+        super().__init__()
+        if self.options.target is None:
+            self.log.error("you must specify a target account with '-t account'.")
             sys.exit(1)
-        self.target_account = options.target[0]
+        self.target_account = self.options.target[0]
 
     def run(self):
         daily_max_follows = self.options.max or self.config['app:twitter']['daily_max_follows']
@@ -37,16 +37,16 @@ class TwitterFollowJob(TaciturnJob):
         day_length = self.config['day_length']
         twitter_account = self.get_account('twitter')
 
-        self.log.info('config: taciturn user = {}'.format(self.username))
-        self.log.info('config: twitter user = {}'.format(twitter_account.name))
-        self.log.info('config: daily_max_follows = {}'.format(daily_max_follows))
-        self.log.info('config: round_max_follows = {}'.format(round_max_follows))
+        self.log.info("config: taciturn user = {}".format(self.username))
+        self.log.info("config: twitter user = {}".format(twitter_account.name))
+        self.log.info("config: daily_max_follows = {}".format(daily_max_follows))
+        self.log.info("config: round_max_follows = {}".format(round_max_follows))
 
-        twitter_handler = TwitterHandler(self.log, self.options, self.session, twitter_account)
+        twitter_handler = TwitterHandler(self.job_id(), twitter_account)
         twitter_handler.login()
 
         RoundTaskExecutor(call=lambda: twitter_handler.start_following(self.target_account, quota=round_max_follows),
-                          name=self.__jobname__,
+                          job_id=self.job_id(),
                           retries=1,
                           quota=round_max_follows,
                           max=daily_max_follows,

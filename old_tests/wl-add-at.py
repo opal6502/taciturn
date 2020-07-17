@@ -3,9 +3,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, not_
 
 from taciturn.db.base import Whitelist, Blacklist, Application
-from taciturn.config import load_config
+from taciturn.config import get_config
 
-config = load_config()
+config = get_config()
 engine = config['database_engine']
 session = Session(bind=engine)
 

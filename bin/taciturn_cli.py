@@ -16,26 +16,20 @@
 # along with Tactiurn.  If not, see <https://www.gnu.org/licenses/>.
 
 
-from sqlalchemy.orm import Session
-from sqlalchemy import create_engine, and_
+from sqlalchemy import and_
 
 import argparse
-import collections
 import sys
 from getpass import getpass
 from datetime import datetime
 
-from taciturn.config import load_config
-
+from taciturn.config import set_options, get_session
 from taciturn.job import TaciturnJobLoader
 
 from taciturn.db.base import (
     Application,
     User
 )
-
-config = load_config()
-engine = config['database_engine']
 
 # features to do with the CLI now:
 #  - application commands:
@@ -62,15 +56,15 @@ command_verb_default = 'list'
 all_command_choices = command_job_choices + command_admin_choices
 
 
-def run_job(job_name, options):
-    loader = TaciturnJobLoader(config=config)
-    job = loader.load_job(job_name, options, config)
+def run_job(job_name):
+    loader = TaciturnJobLoader()
+    job = loader.load_job(job_name)
     job.run()
 
 
 def cmd_application(verb, arg=None):
     "Handle the application command"
-    session = Session(bind=engine)
+    session = get_session()
     if verb == 'list':
         # list applications ...
         print('-'*72)
@@ -85,7 +79,7 @@ def cmd_application(verb, arg=None):
 
 def cmd_user(verb, arg=None, application=None):
     "Handle the user command"
-    session = Session(bind=engine)
+    session = get_session()
     if verb == 'list':
         # list applications ...
         print('-'*72)
@@ -185,16 +179,16 @@ def parse_arguments(args=None):
 
     # parse arguments:
     pa = ap.parse_args(args)
-    print(pa)
 
     return pa
 
 
 if __name__ == '__main__':
-    pa = parse_arguments()
+    options = parse_arguments()
+    set_options(options)
 
-    if pa.job is not None:
-        run_job(pa.job[0], pa)
+    if options.job is not None:
+        run_job(options.job[0])
     else:
         print("You must specify a job with -j job-name")
         sys.exit(1)

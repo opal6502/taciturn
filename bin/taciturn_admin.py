@@ -71,13 +71,13 @@ from taciturn.db.base import (
     Blacklist
 )
 
-from taciturn.config import load_config
+from taciturn.config import get_config
 
 from getpass import getpass
 from datetime import datetime
 import sys
 
-config = load_config()
+config = get_config()
 engine = config['database_engine']
 session = Session(bind=engine)
 

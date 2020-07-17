@@ -1,8 +1,8 @@
 
-from taciturn.config import load_config
+from taciturn.config import get_config
 import pprint
 
 print("Loading config ...")
-c = load_config()
+c = get_config()
 print("Config loaded!")
 pprint.pprint(c)

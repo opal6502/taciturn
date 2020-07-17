@@ -21,11 +21,6 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.keys import Keys
 
-from sqlalchemy import and_
-
-from time import sleep
-from datetime import datetime
-
 from taciturn.applications.base import (
     FollowerApplicationHandler,
     AppDataAnchorMissingException,
@@ -34,20 +29,8 @@ from taciturn.applications.base import (
     AppWebElementException,
     AppActivityLimitException)
 
-from taciturn.db.followers import (
-    Follower,
-    Following,
-    Unfollowed
-)
-
-from taciturn.db.base import (
-    User,
-    Application,
-)
-
 BUTTON_TEXT_FOLLOWING = ('Following', 'Pending', 'Cancel', 'Unfollow')
 BUTTON_TEXT_NOT_FOLLOWING = ('Follow',)
-DEBUG_HALT_EXCEPTION = False
 
 
 class TwitterHandler(FollowerApplicationHandler):
@@ -59,8 +42,8 @@ class TwitterHandler(FollowerApplicationHandler):
     application_asset_dirname = 'twitter'
     default_profile_image = 'default_profile_reasonably_small.png'
 
-    def __init__(self, logger, options, db_session, app_account, driver=None):
-        super().__init__(logger, options, db_session, app_account, driver)
+    def __init__(self, app_account, driver=None):
+        super().__init__(app_account, driver)
         self.log.info('Starting twitter app handler.')
 
     def login(self):
@@ -85,7 +68,9 @@ class TwitterHandler(FollowerApplicationHandler):
 
         # use this to verify login ...
         self._home_profile_link()
-        
+        # refresh, because sometimes login isn't fully processed ...
+        self.driver.refresh()
+
         self.log.info('Logged in.')
 
     def _if_stale_login_lightbox_refresh(self):
@@ -107,7 +92,6 @@ class TwitterHandler(FollowerApplicationHandler):
         homepage_link = self.application_url + '/home'
         self.log.info('Going to home page: {}'.format(homepage_link))
         self.driver.get(homepage_link)
-        self._if_stale_login_lightbox_refresh()
 
     def goto_profile_page(self, user_name=None):
         if user_name is None:
@@ -119,7 +103,6 @@ class TwitterHandler(FollowerApplicationHandler):
             user_profile_link = '{}/{}'.format(self.application_url, user_name)
             self.log.info('Going to page: {}'.format(user_profile_link))
             self.driver.get(user_profile_link)
-        self._if_stale_login_lightbox_refresh()
 
     def goto_following_page(self, user_name=None):
         if user_name is None:
@@ -132,7 +115,6 @@ class TwitterHandler(FollowerApplicationHandler):
             user_following_link = '{}/{}/following'.format(self.application_url, user_name)
             self.log.info('Going to page: {}'.format(user_following_link))
             self.driver.get(user_following_link)
-        self._if_stale_login_lightbox_refresh()
 
     def goto_followers_page(self, user_name=None):
         if user_name is None:
@@ -145,7 +127,6 @@ class TwitterHandler(FollowerApplicationHandler):
             user_followers_link = '{}/{}/followers'.format(self.application_url, user_name)
             self.log.info('Going to page: {}'.format(user_followers_link))
             self.driver.get(user_followers_link)
-        self._if_stale_login_lightbox_refresh()
 
     def post_tweet(self, tweet_body, tweet_image=None):
         if len(tweet_body) <= 60:
@@ -316,6 +297,7 @@ class TwitterHandler(FollowerApplicationHandler):
         return flist_button_text in BUTTON_TEXT_NOT_FOLLOWING
 
     def flist_button_wait_following(self, flist_button):
+        self.log.debug('Waiting for entry to be in following state.')
         return self.new_wait(flist_button).until(lambda e: e.text in BUTTON_TEXT_FOLLOWING)
 
     def flist_button_wait_not_following(self, flist_button):
@@ -332,7 +314,8 @@ class TwitterHandler(FollowerApplicationHandler):
         if popover is None:
             return False
         popover_text = popover.text
-        if popover_text is not None and popover_text == 'You have been blocked from following this user at their request.':
+        if popover_text is not None \
+                and popover_text == 'You have been blocked from following this user at their request.':
             # halt and wait until the blocked notice disappers, so it doesn't confuse us later:
             self.new_wait().until(EC.staleness_of(popover))
             return True
@@ -343,7 +326,8 @@ class TwitterHandler(FollowerApplicationHandler):
         if popover is None:
             return False
         popover_text = popover.text
-        if popover_text is not None and popover_text == 'You are unable to follow more people at this time.':
+        if popover_text is not None \
+                and popover_text == 'You are unable to follow more people at this time.':
             return True
         return False
 

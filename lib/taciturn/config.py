@@ -22,6 +22,7 @@ import copy
 import logging
 from itertools import chain
 
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
 
 if 'TACITURN_ROOT' not in os.environ:
@@ -97,13 +98,13 @@ supported_applications = (
     'youtube'
 )
 
-config_cache = None
+global_config = None
 
 
-def load_config(filename=None):
-    global config_cache
-    if config_cache is not None:
-        return config_cache
+def get_config(filename=None):
+    global global_config
+    if global_config is not None:
+        return global_config
 
     try:
         site_config_file = filename or os.path.join(taciturn_root, 'conf', 'site_config.py')
@@ -173,6 +174,63 @@ def load_config(filename=None):
 
     # pprint.pp(new_config)
     # print('='*72)
-    config_cache = new_config
+    global_config = new_config
     return new_config
 
+
+# get database session:
+
+global_session_maker = None
+
+
+def get_session():
+    global global_session_maker
+    if global_session_maker is None:
+        config = get_config()
+        global_session_maker = sessionmaker(bind=config['database_engine'])
+    return global_session_maker()
+
+
+# command-line options config:
+
+global_options = None
+
+
+def get_options():
+    global global_options
+    return global_options
+
+
+def set_options(options):
+    global global_options
+    global_options = options
+
+
+# logger configuration:
+
+def get_logger(job_name, logger_name='taciturn_log'):
+    config = get_config()
+    # initialize logging here:
+    if config['log_individual_jobs'] is True:
+        log_file_path = os.path.join(config['log_dir'], '{}.log'.format(job_name))
+    else:
+        log_file_path = os.path.join(config['log_dir'], config['log_file'])
+
+    log_level = config.get('log_level') or logging.INFO
+    log = logging.getLogger(logger_name)
+    log.setLevel(log_level)
+
+    lf = logging.Formatter(config['log_format'].format(job_name=job_name))
+
+    fh = logging.FileHandler(log_file_path)
+    fh.setLevel(log_level)
+    fh.setFormatter(lf)
+
+    sh = logging.StreamHandler()
+    sh.setLevel(log_level)
+    sh.setFormatter(lf)
+
+    log.addHandler(sh)
+    log.addHandler(fh)
+
+    return log

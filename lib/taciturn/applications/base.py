@@ -16,8 +16,7 @@
 
 
 # SQLAlchemy:
-from sqlalchemy.orm import Session
-from sqlalchemy import create_engine, and_
+from sqlalchemy import and_
 
 from taciturn.db.base import (
     Application,
@@ -32,20 +31,17 @@ from taciturn.db.followers import (
     Unfollowed
 )
 
-from taciturn.config import load_config
+from taciturn.config import get_config, get_options, get_logger, get_session
 
-# Selenium automation:
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, StaleElementReferenceException
 from selenium.webdriver import Chrome, Firefox, Remote
 from selenium import webdriver
 from selenium.webdriver.support.ui import WebDriverWait
 
-# base class abstraction:
 from abc import ABC
 from abc import abstractmethod
-from io import BytesIO
 
-# image handling:
+# for default image compare processing:
 from PIL import Image, ImageChops
 import requests
 from io import BytesIO
@@ -70,16 +66,17 @@ class BaseApplicationHandler(ABC):
 
     webdriver_user_agent = None
 
-    def __init__(self, logger, options, db_session, app_account, driver=None):
-        self.log = logger
-        self.options = options
-        self.session = db_session
+    def __init__(self, job_name, app_account, driver=None):
+        self.job_name = job_name
+        self.config = get_config()
+        self.log = get_logger(self.job_name)
+        self.options = get_options()
+        self.session = get_session()
 
         self.app_username = app_account.name
         self.app_password = app_account.password
         self.app_account = app_account
 
-        self.config = load_config()
         self.assets_dir = self.config['assets_dir']
         self.screenshots_dir = self.config.get('screenshots_dir')
 
@@ -291,10 +288,10 @@ class BaseApplicationHandler(ABC):
 #  for example follower based, we can create a common interface for this!
 
 class FollowerApplicationHandler(BaseApplicationHandler):
-    def __init__(self, logger, options, db_session, app_account, driver=None):
-        super().__init__(logger, options, db_session, app_account, driver)
+    def __init__(self, app_account, driver=None):
+        super().__init__(app_account, driver)
 
-        config_name = 'app:{}'.format(self.application_name)
+        config_name = 'app:'+self.application_name
         self.follow_back_hiatus = self.config[config_name]['follow_back_hiatus']
         self.unfollow_hiatus = self.config[config_name]['unfollow_hiatus']
         self.action_timeout = self.config[config_name]['action_timeout']
@@ -433,7 +430,7 @@ class FollowerApplicationHandler(BaseApplicationHandler):
 
     def start_following(self, target_account, quota=None, unfollow_hiatus=None):
         "A generalized start_following method, made to be application-agnostic."
-        self.log.info('Starting following session.')
+        self.log.info('Starting user following session.')
         self.log.debug('Following quota = {}'.format(quota))
         self.goto_following_page(target_account)
 
@@ -770,7 +767,4 @@ class AppRetryLimitException(AppException):
 class AppWebElementException(AppRetryLimitException):
     "Raise if handler can't find web element after retry limit, specific retry fail case!"
     pass
-
-
-# utility functions:
 

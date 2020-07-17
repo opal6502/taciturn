@@ -21,7 +21,7 @@ from importlib.machinery import SourceFileLoader
 from abc import ABC, abstractmethod
 import os
 
-from taciturn.config import load_config
+from taciturn.config import get_config, get_options, get_logger, get_session
 from taciturn.db.base import User, Application, AppAccount, JobId
 
 from sqlalchemy import and_
@@ -29,25 +29,38 @@ from sqlalchemy.orm import Session
 
 from datetime import timedelta
 from time import sleep, time
-import logging
 
 
 class TaciturnJob(ABC):
     __jobname__ = 'taciturn_job'
     __appnames__ = None
 
-    def __init__(self, options, config=None):
+    def __init__(self):
         self.accounts = dict()
-        self.options = options
-        self.config = config or load_config()
-        self.session = None
-        self.stop_no_quota = None
+        self.options = get_options()
+        self.config = get_config()
+        self.session = get_session()
 
-        if 'database_engine' in self.config:
-            self.session = Session(bind=self.config['database_engine'])
-        else:
-            raise TypeError("No 'database_engine' provided by config!")
+        self.job_id = self._new_job_id()
+        self.log = get_logger(self.job_id())
+        self._load_accounts()
 
+        self.log.info('Initializing taciturn job #{}.'.format(self.job_id))
+
+    def job_id(self):
+        return '{}.{}'.format(self.__jobname__, self.job_id)
+
+    def _new_job_id(self):
+        job_id_row = self.session.query(JobId).filter_by(id=1).one()
+        new_job_id = job_id_row.job_id + 1
+        job_id_row.job_id = new_job_id
+        self.session.commit()
+        return new_job_id
+
+    def _load_accounts(self):
+        self.log.info("Loading accounts for job.")
+
+        # some input validation for self.__appnames__
         if self.__appnames__ is None and not isinstance(self.__appnames__, list):
             raise TypeError('Job needs to define self.__appnames__ as a list of apps the job interacts with')
         if self.options.user is None:
@@ -57,48 +70,7 @@ class TaciturnJob(ABC):
             self.stop_no_quota = True
         else:
             self.stop_no_quota = False
-        self.load_accounts()
-        self.job_id = self.new_job_id()
 
-        # initialize logging here:
-        if self.config['log_individual_jobs'] is True:
-            log_file_path = os.path.join(self.config['log_dir'], '{}.log'.format(self))
-        else:
-            log_file_path = os.path.join(self.config['log_dir'], self.config['log_file'])
-
-        log_level = self.config.get('log_level') or logging.INFO
-        self.log = logging.getLogger('taciturn_log')
-        self.log.setLevel(log_level)
-
-        lf = logging.Formatter(self.config['log_format'].format(job_name=str(self)))
-
-        fh = logging.FileHandler(log_file_path)
-        fh.setLevel(log_level)
-        fh.setFormatter(lf)
-
-        sh = logging.StreamHandler()
-        sh.setLevel(log_level)
-        sh.setFormatter(lf)
-
-        self.log.addHandler(sh)
-        self.log.addHandler(fh)
-
-        self.log.info('Initializing taciturn job.')
-
-
-
-
-    def __str__(self):
-        return '{}.{}'.format(self.__jobname__, self.job_id)
-
-    def new_job_id(self):
-        job_id_row = self.session.query(JobId).filter_by(id=1).one()
-        new_job_id = job_id_row.job_id + 1
-        job_id_row.job_id = new_job_id
-        self.session.commit()
-        return new_job_id
-
-    def load_accounts(self):
         for app_name in self.__appnames__:
             app_account = self.session.query(AppAccount).\
                 filter(and_(AppAccount.application_id == Application.id,
@@ -123,12 +95,12 @@ class TaciturnJob(ABC):
 
 
 class TaciturnJobLoader:
-    def __init__(self, config=None, jobs_dir=None):
-        self.config = config or load_config()
-        self.jobs_dir = jobs_dir or self.determine_jobs_dir()
+    def __init__(self, jobs_dir=None):
+        self.config = get_config()
+        self.jobs_dir = jobs_dir or self._determine_jobs_dir()
         self.jobs = dict()
 
-    def determine_jobs_dir(self):
+    def _determine_jobs_dir(self):
         job_dir = os.environ.get('TACITURN_JOB_ROOT') or \
                   self.config.get('taciturn_job_root')
         if job_dir is None and self.config.get('taciturn_root') is not None:
@@ -141,7 +113,7 @@ class TaciturnJobLoader:
 
         return job_dir
 
-    def load_job(self, job_name, options, config):
+    def load_job(self, job_name):
         job_full_name = os.path.join(self.jobs_dir, job_name+'.py')
 
         if not os.path.exists(job_full_name):
@@ -150,19 +122,22 @@ class TaciturnJobLoader:
         job_module = SourceFileLoader('site_config', job_full_name).load_module()
         if not hasattr(job_module, 'job'):
             raise TypeError("Job file does not define 'job' object: {}".format(job_full_name))
-        return job_module.job(options, config)
+        return job_module.job()
 
 
 class TaskExecutor:
-    def __init__(self, log=None, call=None, name=None, retries=None):
-        self.log = log
+    def __init__(self, call=None, job_id=None, retries=None):
         self.call = call
-        self.name = name
+        self.job_id = job_id
         self.retries = retries or 1
+        self.config = get_config()
+        self.log = get_logger(job_id)
 
     def run(self):
         for try_n in range(1, self.retries + 1):
             try:
+                self.log.info("Task: starting try {} of {}"
+                                .format(try_n, self.retries))
                 operation_count = self.call()
             except Exception as e:
                 self.log.exception('Task: Failed, try {} of {}; exception occurred: {}'
@@ -178,15 +153,15 @@ class TaskExecutor:
 
 class RoundTaskExecutor(TaskExecutor):
     def __init__(self,
-                 log=None,
                  call=None,
-                 name=None,
+                 job_id=None,
                  quota=None,
                  max=None,
                  period=None,
                  retries=None,
                  stop_no_quota=False):
-        super().__init__(log=log, call=call, name=name, retries=retries)
+
+        super().__init__(call=call, job_id=job_id, retries=retries)
         self.quota = quota
         self.max = max
         self.period = period  # datetime.timedelta() object
@@ -203,11 +178,15 @@ class RoundTaskExecutor(TaskExecutor):
         task_timeout = self.period.total_seconds() / total_rounds
 
         for round_n in range(1, total_rounds+1):
+            self.log.info("Task: starting round {} of {}."
+                            .format(round_n, total_rounds))
             operation_count = 0
             task_start_epoch = time()
 
             for try_n in range(1, self.retries+1):
                 try:
+                    self.log.info("Task: starting try {} of {}"
+                                    .format(try_n, self.retries))
                     operation_count = self.call()
                 except Exception as e:
                     self.log.exception('Task: Round {} of {} failed, try {} of {}; exception occurred: {}'
@@ -230,13 +209,13 @@ class RoundTaskExecutor(TaskExecutor):
             self.operations_total += operation_count
 
             if operation_count < self.quota:
-                self.log.warn("Task {}: couldn't fulfill quota; expected {} operations, actual {}"
-                                 .format(self.name, self.quota, operation_count))
+                self.log.warning("Task {}: couldn't fulfill quota; expected {} operations, actual {}"
+                                   .format(self.name, self.quota, operation_count))
                 if self.stop_no_quota:
-                    self.log.warn("Quota unfulfilled, stopping.")
+                    self.log.warning("Quota unfulfilled, stopping.")
                     break
             elif operation_count == self.max:
-                print("Task: round complete with {} operations."
+                self.log.info("Task: round complete with {} operations."
                         .format(operation_count))
 
             # last round, no need to sleep:
