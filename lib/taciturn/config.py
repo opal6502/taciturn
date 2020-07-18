@@ -54,9 +54,9 @@ default_config = {
 
     'app:*': {
         'daily_max_follows': 400,
-        'round_max_follows': 40,
+        'round_max_follows': 100,
         'daily_max_unfollows': 400,
-        'round_max_unfollows': 40,
+        'round_max_unfollows': 100,
 
         # 5 seconds to 5 minutes:
         'action_timeout': (1000*5, 1000*60*2),
@@ -208,7 +208,11 @@ def set_options(options):
 
 # logger configuration:
 
-def get_logger(job_name, logger_name='taciturn_log'):
+global_logger = None
+
+
+def init_logger(job_name, logger_name='taciturn_log'):
+    global global_logger
     config = get_config()
     # initialize logging here:
     if config['log_individual_jobs'] is True:
@@ -217,8 +221,8 @@ def get_logger(job_name, logger_name='taciturn_log'):
         log_file_path = os.path.join(config['log_dir'], config['log_file'])
 
     log_level = config.get('log_level') or logging.INFO
-    log = logging.getLogger(logger_name)
-    log.setLevel(log_level)
+    global_logger = logging.getLogger(logger_name)
+    global_logger.setLevel(log_level)
 
     lf = logging.Formatter(config['log_format'].format(job_name=job_name))
 
@@ -230,7 +234,13 @@ def get_logger(job_name, logger_name='taciturn_log'):
     sh.setLevel(log_level)
     sh.setFormatter(lf)
 
-    log.addHandler(sh)
-    log.addHandler(fh)
+    global_logger.addHandler(sh)
+    global_logger.addHandler(fh)
 
-    return log
+    return global_logger
+
+
+def get_logger():
+    if global_logger is None:
+        raise RuntimeError("Logger has not been initialized")
+    return global_logger

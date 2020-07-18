@@ -21,13 +21,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.keys import Keys
 
-from taciturn.applications.base import (
-    FollowerApplicationHandler,
-    AppDataAnchorMissingException,
-    AppUnexpectedStateException,
-    AppLoginException,
-    AppWebElementException,
-    AppActivityLimitException)
+from taciturn.applications.base import FollowerApplicationHandler
 
 BUTTON_TEXT_FOLLOWING = ('Following', 'Pending', 'Cancel', 'Unfollow')
 BUTTON_TEXT_NOT_FOLLOWING = ('Follow',)
@@ -67,21 +61,21 @@ class TwitterHandler(FollowerApplicationHandler):
             .click()
 
         # use this to verify login ...
-        self._home_profile_link()
+        self._home_profile_link_element()
         # refresh, because sometimes login isn't fully processed ...
         self.driver.refresh()
 
         self.log.info('Logged in.')
 
-    def _if_stale_login_lightbox_refresh(self):
+    def _is_stale_login_lightbox_present(self):
         lightbox_text_locator = (By.XPATH, '//*[@id="react-root"]//span[text()="Don’t miss what’s happening"]')
         try:
             if self.new_wait(timeout=3).until(EC.presence_of_element_located(lightbox_text_locator)):
-                self.driver.refresh()
+                return True
         except TimeoutException:
-            pass
+            return False
 
-    def _home_profile_link(self):
+    def _home_profile_link_element(self):
         # //*[@id="react-root"]/div/div/div[2]/header/div/div/div/div[1]/div[2]/nav/a[7]
         # nav aria-label="Primary"
         # a aria-label="Profile"
@@ -90,43 +84,71 @@ class TwitterHandler(FollowerApplicationHandler):
 
     def goto_homepage(self):
         homepage_link = self.application_url + '/home'
-        self.log.info('Going to home page: {}'.format(homepage_link))
-        self.driver.get(homepage_link)
+        while True:
+            self.log.info("Going to home page: {}".format(homepage_link))
+            self.driver.get(homepage_link)
+
+            if self._is_stale_login_lightbox_present():
+                self.driver.refresh()
+                continue
+            else:
+                break
 
     def goto_profile_page(self, user_name=None):
-        if user_name is None:
-            self.driver.get(self.application_url + '/home')
-            profile_link = self._home_profile_link().get_attribute('href')
-            self.log.info('Going to page: {}'.format(profile_link))
-            self.driver.get(profile_link)
-        else:
-            user_profile_link = '{}/{}'.format(self.application_url, user_name)
-            self.log.info('Going to page: {}'.format(user_profile_link))
-            self.driver.get(user_profile_link)
+        while True:
+            if user_name is None:
+                self.driver.get(self.application_url + '/home')
+                profile_link = self._home_profile_link_element().get_attribute('href')
+                self.log.info("Going to page: {}".format(profile_link))
+                self.driver.get(profile_link)
+            else:
+                user_profile_link = '{}/{}'.format(self.application_url, user_name)
+                self.log.info("Going to page: {}".format(user_profile_link))
+                self.driver.get(user_profile_link)
+
+            if self._is_stale_login_lightbox_present():
+                self.driver.refresh()
+                continue
+            else:
+                break
 
     def goto_following_page(self, user_name=None):
-        if user_name is None:
-            self.log.info('Going to user following page.')
-            self.goto_profile_page()
-            locator = (By.XPATH, '//*[@id="react-root"]//div[1]/a/span[2]/span[text()="Following"]')
-            self.new_wait(timeout=10)\
-                   .until(EC.presence_of_element_located(locator)).click()
-        else:
-            user_following_link = '{}/{}/following'.format(self.application_url, user_name)
-            self.log.info('Going to page: {}'.format(user_following_link))
-            self.driver.get(user_following_link)
+        while True:
+            if user_name is None:
+                self.log.info("Going to user following page.")
+                self.goto_profile_page()
+                locator = (By.XPATH, '//*[@id="react-root"]//div[1]/a/span[2]/span[text()="Following"]')
+                self.new_wait(timeout=10)\
+                       .until(EC.presence_of_element_located(locator)).click()
+            else:
+                user_following_link = '{}/{}/following'.format(self.application_url, user_name)
+                self.log.info("Going to page: {}".format(user_following_link))
+                self.driver.get(user_following_link)
+
+            if self._is_stale_login_lightbox_present():
+                self.driver.refresh()
+                continue
+            else:
+                break
 
     def goto_followers_page(self, user_name=None):
-        if user_name is None:
-            self.log.info('Going to user followers page.')
-            self.goto_profile_page()
-            locator = (By.XPATH, '//*[@id="react-root"]//div[2]/a/span[2]/span[text()="Followers"]')
-            self.new_wait(timeout=10)\
-                   .until(EC.presence_of_element_located(locator)).click()
-        else:
-            user_followers_link = '{}/{}/followers'.format(self.application_url, user_name)
-            self.log.info('Going to page: {}'.format(user_followers_link))
-            self.driver.get(user_followers_link)
+        while True:
+            if user_name is None:
+                self.log.info('Going to user followers page.')
+                self.goto_profile_page()
+                locator = (By.XPATH, '//*[@id="react-root"]//div[2]/a/span[2]/span[text()="Followers"]')
+                self.new_wait(timeout=10)\
+                       .until(EC.presence_of_element_located(locator)).click()
+            else:
+                user_followers_link = '{}/{}/followers'.format(self.application_url, user_name)
+                self.log.info('Going to page: {}'.format(user_followers_link))
+                self.driver.get(user_followers_link)
+
+            if self._is_stale_login_lightbox_present():
+                self.driver.refresh()
+                continue
+            else:
+                break
 
     def post_tweet(self, tweet_body, tweet_image=None):
         if len(tweet_body) <= 60:
@@ -230,6 +252,13 @@ class TwitterHandler(FollowerApplicationHandler):
         else:
             raise ValueError("Couldn't truncate body string for twitter!")
 
+    def has_unfollow_confirm(self):
+        return True
+
+    def unfollow_confirm_button(self):
+        locator = (By.XPATH, '//*[@id="react-root"]//span/span[text() = "Unfollow"]')
+        return self.new_wait(timeout=10).until(EC.presence_of_element_located(locator))
+
     # XXX NEW 0.2a flist METHODS!
 
     def flist_first_from_following(self):
@@ -269,8 +298,10 @@ class TwitterHandler(FollowerApplicationHandler):
         return self.new_wait(flist_entry).until(EC.presence_of_element_located(locator)).text
 
     def _flist_username_locator(self):
-        return (By.XPATH, './div/div/div/div[2]/div/div[1]/a/div/div[2]/div/span[starts-with(text(), "@")] | '
-                     './div/div/div/div[2]/div/div[1]/a/div/div/div[1]/span/span[starts-with(text(), "@")]')
+        return (By.XPATH, './/div/span[starts-with(text(), "@")] | '
+                          './/span/span[starts-with(text(), "@")]')
+        # return (By.XPATH, './div/div/div/div[2]/div/div[1]/a/div/div[2]/div/span[starts-with(text(), "@")] | '
+        #              './div/div/div/div[2]/div/div[1]/a/div/div/div[1]/span/span[starts-with(text(), "@")]')
 
     def flist_image_is_default(self, flist_entry):
         locator = (By.XPATH, './div/div/div/div[1]/div/a/div[1]/div[2]/div/img')
@@ -307,7 +338,9 @@ class TwitterHandler(FollowerApplicationHandler):
     def flist_header_overlap_y(self):
         header_locator = (By.XPATH, '(//div[@data-testid="primaryColumn"]/div/div)[1]')
         header_element = self.new_wait().until(EC.presence_of_element_located(header_locator))
-        return header_element.size['height']
+        element_y = header_element.size['height']
+        self.log.debug("flist_header_overlap_y = {}".format(element_y))
+        return element_y
 
     def flist_is_blocked_notice(self):
         popover = self._flist_bottom_notify_popover()
@@ -332,7 +365,7 @@ class TwitterHandler(FollowerApplicationHandler):
         return False
 
     def _flist_bottom_notify_popover(self):
-        locator = (By.XPATH, '//*[@id="react-root"]/div/div/div[1]/div[2]/div/div/div[1]/span')
+        locator = (By.XPATH, '//*[@id="react-root"]//div[@role="alert"]/div[1]/span')
         try:
             return self.new_wait(timeout=0).until(EC.presence_of_element_located(locator))
         except TimeoutException:
@@ -670,8 +703,3 @@ class TwitterHandlerWebElements():
             By.XPATH,
             '//*[@id="react-root"]/div/div/div[1]/div[2]/div/div'
             '/div/div[2]/div[2]/div[3]/div[2]/div/span/span[text() = "Unfollow"]')
-
-# twitter specific exceptions:
-
-class TwitterFollowLimitException(AppActivityLimitException):
-    pass

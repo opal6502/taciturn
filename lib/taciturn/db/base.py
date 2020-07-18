@@ -16,8 +16,17 @@
 
 
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, BigInteger
 from sqlalchemy.orm import relationship
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    DateTime,
+    ForeignKey,
+    BigInteger,
+    ForeignKeyConstraint,
+    PrimaryKeyConstraint
+)
 
 ORMBase = declarative_base()
 
@@ -98,14 +107,4 @@ class JobId(ORMBase):
 
     id = Column(Integer, primary_key=True)
     job_id = Column(BigInteger, nullable=False)
-
-
-# Taciturn data related exceptions:
-
-class DataException(Exception):
-    pass
-
-
-class DataExtraRowException(DataException):
-    pass
 

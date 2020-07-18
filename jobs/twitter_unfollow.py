@@ -15,12 +15,12 @@
 # along with Tactiurn.  If not, see <https://www.gnu.org/licenses/>.
 
 
-from taciturn.job import TaciturnJob, TaskExecutor, RoundTaskExecutor
+from taciturn.job import TaciturnJob, TaskExecutor, RoundTaskExecutor, ApplicationHandlerStats
 from taciturn.applications.twitter import TwitterHandler
 
 
 class TwitterUnfollowJob(TaciturnJob):
-    __jobname__ = 'twitter_follow'
+    __jobname__ = 'twitter_unfollow'
     __appnames__ = ['twitter']
 
     def run(self):
@@ -34,17 +34,24 @@ class TwitterUnfollowJob(TaciturnJob):
         self.log.info("config: daily_max_unfollows = {}".format(daily_max_unfollows))
         self.log.info("config: round_max_unfollows = {}".format(round_max_unfollows))
 
-        twitter_handler = TwitterHandler(twitter_account)
+        update_followers_stats = ApplicationHandlerStats()
+        unfollow_stats = ApplicationHandlerStats()
+        twitter_handler = TwitterHandler(twitter_account, update_followers_stats)
         twitter_handler.login()
 
         TaskExecutor(
                     call=lambda: twitter_handler.update_followers(),
-                    job_name=self.job_name())\
+                    job_name=self.job_name(),
+                    driver=twitter_handler.driver,
+                    handler_stats=update_followers_stats)\
                 .run()
 
+        twitter_handler.stats = unfollow_stats
         RoundTaskExecutor(
                     call=lambda: twitter_handler.start_unfollowing(quota=round_max_unfollows),
                     job_name=self.job_name(),
+                    driver=twitter_handler.driver,
+                    handler_stats=unfollow_stats,
                     retries=1,
                     quota=round_max_unfollows,
                     max=daily_max_unfollows,

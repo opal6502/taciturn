@@ -21,14 +21,17 @@ from importlib.machinery import SourceFileLoader
 from abc import ABC, abstractmethod
 import os
 
-from taciturn.config import get_config, get_options, get_logger, get_session
+from taciturn.config import get_config, get_options, init_logger, get_logger, get_session
 from taciturn.db.base import User, Application, AppAccount, JobId
+from taciturn.applications.base import AppEndOfListException, AppUserPrivilegeSuspendedException
 
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
-from datetime import timedelta
+from collections import namedtuple
+from datetime import timedelta, datetime
 from time import sleep, time
+import sys
 
 
 class TaciturnJob(ABC):
@@ -41,16 +44,16 @@ class TaciturnJob(ABC):
         self.config = get_config()
         self.session = get_session()
 
-        self.job_id = self._new_job_id()
-        self.log = get_logger(self.job_id())
+        self._job_number = self._new_job_number()
+        self.log = init_logger(self.job_name())
         self._load_accounts()
 
-        self.log.info('Initializing taciturn job #{}.'.format(self.job_id))
+        self.log.info('Initializing taciturn job #{}.'.format(self._job_number))
 
-    def job_id(self):
-        return '{}.{}'.format(self.__jobname__, self.job_id)
+    def job_name(self):
+        return '{}.{}'.format(self.__jobname__, self._job_number)
 
-    def _new_job_id(self):
+    def _new_job_number(self):
         job_id_row = self.session.query(JobId).filter_by(id=1).one()
         new_job_id = job_id_row.job_id + 1
         job_id_row.job_id = new_job_id
@@ -126,23 +129,48 @@ class TaciturnJobLoader:
 
 
 class TaskExecutor:
-    def __init__(self, call=None, job_id=None, retries=None):
+    def __init__(self, driver=None, job_name=None, call=None, retries=None, handler_stats=None):
+        self.driver = driver
+        self.job_name = job_name
         self.call = call
-        self.job_id = job_id
         self.retries = retries or 1
         self.config = get_config()
-        self.log = get_logger(job_id)
+        self.log = get_logger()
+        self.handler_stats = handler_stats
+
+        self.total_time = 0
+        self.operations_total = 0
+        self.task_start_time = 0
+        self.retry = 0
+        self.screenshot_n = 0
 
     def run(self):
+        try_n = 0
+        self.task_start_time = time()
+
         for try_n in range(1, self.retries + 1):
+            self.retry = try_n
             try:
-                self.log.info("Task: starting try {} of {}"
-                                .format(try_n, self.retries))
-                operation_count = self.call()
+                self.log.info("Task: starting try {} of {}".format(try_n, self.retries))
+                self.call()
+            except KeyboardInterrupt:
+                self.log.exception("Task: incomplete: cancelled by keyboard interrupt.")
+                self.log_report(incomplete=True)
+                sys.exit(1)
+            except AppEndOfListException:
+                self.log.info("Task: end of list encountered.")
+                break
+            except AppUserPrivilegeSuspendedException:
+                self.log.info("Task: incomplete: user privileges revoked by application.")
+                self.take_screenshot()
+                self.log_report(incomplete=True)
+                return
             except Exception as e:
-                self.log.exception('Task: Failed, try {} of {}; exception occurred: {}'
+                self.log.exception("Task: failed: try {} of {}; exception occurred: {}"
                                       .format(try_n, self.retries, e))
+                self.take_screenshot()
                 if try_n >= self.retries:
+                    self.log_report(incomplete=True)
                     raise e
             else:
                 break
@@ -150,87 +178,202 @@ class TaskExecutor:
             self.log.error('Task: Failed after {} tries.'
                               .format(try_n))
 
+        self.total_time += time() - self.task_start_time
+        self.operations_total += self.handler_stats.get_operation_count()
+
+        self.log_report()
+
+    def log_report(self, incomplete=False):
+        if incomplete is True:
+            self.log.info("Task: incomplete: operations = {}; failures = {}; "
+                          "start_time = '{}'; end_time = '{}'; task_time = '{}';"
+                          .format(self.handler_stats.get_operation_count(),
+                                  self.retry-1,
+                                  datetime.fromtimestamp(self.task_start_time),
+                                  datetime.now(),
+                                  timedelta(seconds=self.total_time+(time() - self.task_start_time))))
+            self.log.info("Task: cancelled.")
+        else:
+            self.log.info("Task: complete: operations = {}; failures = {}; "
+                          "start_time = '{}'; end_time = '{}'; task_time = '{}';"
+                          .format(self.handler_stats.get_operation_count(),
+                                  self.retry-1,
+                                  datetime.fromtimestamp(self.task_start_time),
+                                  datetime.now(),
+                                  timedelta(seconds=self.total_time)))
+            self.log.info("Task: finished.")
+
+    def take_screenshot(self):
+        screenshot_filename = os.path.join(self.config['screenshots_dir'],
+                                           '{}.{}.png'.format(self.job_name, self.screenshot_n))
+        self.driver.save_screenshot(screenshot_filename)
+        self.log.info("Saved screenshot at {}".format(screenshot_filename))
+        self.screenshot_n += 1
+
 
 class RoundTaskExecutor(TaskExecutor):
     def __init__(self,
+                 driver=None,
+                 job_name=None,
                  call=None,
-                 job_id=None,
+                 handler_stats=None,
                  quota=None,
                  max=None,
                  period=None,
                  retries=None,
                  stop_no_quota=False):
 
-        super().__init__(call=call, job_id=job_id, retries=retries)
+        super().__init__(driver=driver, job_name=job_name, call=call, handler_stats=handler_stats, retries=retries)
         self.quota = quota
         self.max = max
         self.period = period  # datetime.timedelta() object
         self.stop_no_quota = stop_no_quota
 
-        self.total_time = 0
-        self.operations_total = 0
         self.failed_rounds = 0
+        self.round_retries = 0
+        self.total_rounds = self.max // self.quota
+        self.task_timeout = self.period.total_seconds() / self.total_rounds
 
-        self.start_epoch = None
+        self.round_stats = RoundExecutorStats()
 
     def run(self):
-        total_rounds = self.max // self.quota
-        task_timeout = self.period.total_seconds() / total_rounds
+        try_n = 0   # for use in loop else clause
 
-        for round_n in range(1, total_rounds+1):
-            self.log.info("Task: starting round {} of {}."
-                            .format(round_n, total_rounds))
-            operation_count = 0
-            task_start_epoch = time()
+        for round_n in range(1, self.total_rounds+1):
+            self.log.info("Task: starting round {} of {}.".format(round_n, self.total_rounds))
+            self.log.info("Task: timeout between rounds is {}.".format(timedelta(seconds=self.task_timeout)))
+            self.task_start_time = time()
+            self.round_retries = 0
 
             for try_n in range(1, self.retries+1):
                 try:
-                    self.log.info("Task: starting try {} of {}"
-                                    .format(try_n, self.retries))
-                    operation_count = self.call()
+                    self.log.info("Task: starting try {} of {}.".format(try_n, self.retries))
+                    self.call()
+                except KeyboardInterrupt:
+                    self.log.exception("Task: cancelled by keyboard interrupt.")
+                    self.log_report(incomplete=True)
+                    sys.exit(1)
+                except AppEndOfListException:
+                    self.log.info("Task: end of list encountered.")
+                    break
+                except AppUserPrivilegeSuspendedException:
+                    self.log.info("Task: incomplete: user privileges revoked by application.")
+                    self.take_screenshot()
+                    self.log_report(incomplete=True)
+                    raise RuntimeError("Exiting!")
+                    return
                 except Exception as e:
-                    self.log.exception('Task: Round {} of {} failed, try {} of {}; exception occurred: {}'
-                                          .format(round_n, total_rounds, try_n, self.retries, str(e)))
+                    self.log.exception("Task: round {} of {} failed, try {} of {}; exception occurred: {}"
+                                          .format(round_n, self.total_rounds, try_n, self.retries, str(e)))
+                    self.take_screenshot()
+                    self.round_retries += 1
                     if try_n >= self.retries:
+                        self.log_report(incomplete=True)
                         raise e
                 else:
                     break
             else:
-                print('Task: Round {} of {} failed after {} tries.'
-                          .format(round_n, total_rounds, try_n))
+                self.log.error("Task: Round {} of {} failed after {} tries."
+                                    .format(round_n, self.total_rounds, try_n))
                 self.failed_rounds += 1
 
-            task_time = time() - task_start_epoch
-            task_sleep_time = task_timeout - task_time
+            task_time = time() - self.task_start_time
+            task_sleep_time = self.task_timeout - task_time
             if task_sleep_time < 0:
                 task_sleep_time = 0
 
             self.total_time += task_time
+            operation_count = self.handler_stats.get_operation_count()
             self.operations_total += operation_count
 
             if operation_count < self.quota:
-                self.log.warning("Task {}: couldn't fulfill quota; expected {} operations, actual {}"
-                                   .format(self.name, self.quota, operation_count))
+                self.log.warning("Task: couldn't fulfill quota; expected {} operations, actual {}."
+                                   .format(self.quota, operation_count))
                 if self.stop_no_quota:
                     self.log.warning("Quota unfulfilled, stopping.")
-                    break
+                    self.log_report(incomplete=True)
+                    sys.exit(1)
             elif operation_count == self.max:
                 self.log.info("Task: round complete with {} operations."
                         .format(operation_count))
 
+            self.round_stats.add_round(operations=operation_count,
+                                       failures=try_n-1,
+                                       start_time=datetime.fromtimestamp(self.task_start_time),
+                                       end_time=datetime.now(),
+                                       task_time=timedelta(seconds=task_time))
+
             # last round, no need to sleep:
-            if round_n >= total_rounds or self.operations_total >= self.max:
+            if round_n >= self.total_rounds or self.operations_total >= self.max:
                 break
 
             self.log.info("Task: sleeping for {} until next round."
                              .format(timedelta(seconds=task_sleep_time)))
             sleep(task_sleep_time)
 
-        self.log.info("Task: ran {} rounds, {} operations, {} rounds_failed"
-                         .format(total_rounds, self.operations_total, self.failed_rounds))
-        self.log.info("Task: total time: {}"
-                         .format(timedelta(seconds=self.total_time)))
-        self.log.info("Task: complete")
+        self.log_report()
+
+    def log_report(self, incomplete=False):
+        round_n = 0
+        for round_n, round in enumerate(self.round_stats.all_rounds(), 1):
+            self.log.info("Task: complete round #{}: operations = {}; failures = {}; "
+                          "start_time = '{}'; end_time = '{}'; task_time = '{}';"
+                          .format(round_n, round.operations,
+                                           round.failures,
+                                           datetime.fromtimestamp(round.start_time),
+                                           datetime.fromtimestamp(round.end_time),
+                                           timedelta(seconds=round.task_time)))
+        round_n += 1
+        if incomplete is True:
+            self.log.info("Task: incomplete round #{}: operations = {}; failures = {}; "
+                          "start_time = '{}'; end_time = '{}'; task_time = '{}';"
+                          .format(round_n, self.handler_stats.get_operation_count(),
+                                           self.round_retries,
+                                           datetime.fromtimestamp(self.task_start_time),
+                                           datetime.now(),
+                                           timedelta(seconds=self.total_time+(time() - self.task_start_time))))
+            self.log.info("Task: cancelled.")
+        else:
+            self.log.info("Task: finished.")
+
+
+class ApplicationHandlerStats:
+    def __init__(self):
+        self.operation_count = 0
+        self.operation_failures = 0
+
+    def get_operation_count(self):
+        return self.operation_count
+
+    def get_failure_count(self):
+        return self.operation_failures
+
+    def one_operation_successful(self):
+        self.operation_count += 1
+
+    def reset_operation_count(self):
+        self.operation_count = 0
+
+    def one_operation_failed(self):
+        self.operation_failures += 1
+
+    def reset_failure_count(self):
+        self.operation_failures = 0
+
+
+
+class RoundExecutorStats:
+    round = namedtuple('Round', ['operations', 'failures', 'start_time', 'end_time', 'task_time'])
+
+    def __init__(self):
+        self.rounds = list()
+
+    def add_round(self, **round_attributes):
+        self.rounds.append(self.round(**round_attributes))
+
+    def all_rounds(self):
+        for round in self.rounds:
+            yield round
 
 
 class TaciturnJobException(Exception):

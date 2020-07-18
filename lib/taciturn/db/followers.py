@@ -15,7 +15,7 @@
 # along with Tactiurn.  If not, see <https://www.gnu.org/licenses/>.
 
 
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, ForeignKeyConstraint, PrimaryKeyConstraint
 from sqlalchemy.orm import relationship
 
 from taciturn.db.base import ORMBase
@@ -62,4 +62,5 @@ class Unfollowed(ORMBase):
 
     established = Column(DateTime, nullable=False)
     name = Column(String(100), nullable=False)
+
 

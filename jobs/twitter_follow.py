@@ -14,7 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with Tactiurn.  If not, see <https://www.gnu.org/licenses/>.
 
-from taciturn.job import TaciturnJob, RoundTaskExecutor
+from taciturn.job import TaciturnJob, RoundTaskExecutor, ApplicationHandlerStats
 from taciturn.applications.twitter import TwitterHandler
 
 import sys
@@ -42,11 +42,14 @@ class TwitterFollowJob(TaciturnJob):
         self.log.info("config: daily_max_follows = {}".format(daily_max_follows))
         self.log.info("config: round_max_follows = {}".format(round_max_follows))
 
-        twitter_handler = TwitterHandler(self.job_id(), twitter_account)
+        unfollow_stats = ApplicationHandlerStats()
+        twitter_handler = TwitterHandler(twitter_account, unfollow_stats)
         twitter_handler.login()
 
         RoundTaskExecutor(call=lambda: twitter_handler.start_following(self.target_account, quota=round_max_follows),
-                          job_id=self.job_id(),
+                          job_name=self.job_name(),
+                          driver=twitter_handler.driver,
+                          handler_stats=unfollow_stats,
                           retries=1,
                           quota=round_max_follows,
                           max=daily_max_follows,
