@@ -55,7 +55,7 @@ class TwitterFollowJob(TaciturnJob):
                           max=daily_max_follows,
                           stop_no_quota=self.stop_no_quota,
                           period=day_length)\
-                        .run()
+                    .run()
 
 
 job = TwitterFollowJob

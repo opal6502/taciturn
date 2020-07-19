@@ -19,8 +19,8 @@ from taciturn.job import TaciturnJob, TaskExecutor, ApplicationHandlerStats
 from taciturn.applications.twitter import TwitterHandler
 
 
-class TwitterScanFollowersJob(TaciturnJob):
-    __jobname__ = 'twitter_update_followers'
+class TwitterScanFollowingJob(TaciturnJob):
+    __jobname__ = 'twitter_update_following'
     __appnames__ = ['twitter']
 
     def run(self):
@@ -33,10 +33,10 @@ class TwitterScanFollowersJob(TaciturnJob):
 
         twitter_handler.login()
 
-        TaskExecutor(call=lambda: twitter_handler.update_followers(),
+        TaskExecutor(call=lambda: twitter_handler.update_following(),
                      job_name=self.job_name(),
                      handler_stats=scan_stats)\
                 .run()
 
 
-job = TwitterScanFollowersJob()
+job = TwitterScanFollowingJob()

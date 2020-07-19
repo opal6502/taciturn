@@ -23,9 +23,6 @@ from selenium.webdriver.common.keys import Keys
 
 from taciturn.applications.base import FollowerApplicationHandler
 
-BUTTON_TEXT_FOLLOWING = ('Following', 'Pending', 'Cancel', 'Unfollow')
-BUTTON_TEXT_NOT_FOLLOWING = ('Follow',)
-
 
 class TwitterHandler(FollowerApplicationHandler):
     application_name = 'twitter'
@@ -35,6 +32,9 @@ class TwitterHandler(FollowerApplicationHandler):
 
     application_asset_dirname = 'twitter'
     default_profile_image = 'default_profile_reasonably_small.png'
+
+    button_text_following = ('Following', 'Pending', 'Cancel', 'Unfollow')
+    button_text_not_following = ('Follow',)
 
     def __init__(self, app_account, driver=None):
         super().__init__(app_account, driver)
@@ -321,20 +321,6 @@ class TwitterHandler(FollowerApplicationHandler):
         locator = (By.XPATH, './div/div/div/div[2]/div/div[2]/div/div/span/span')
         return self.new_wait(flist_entry).until(EC.presence_of_element_located(locator))
 
-    def flist_button_is_following(self, flist_button_text):
-        return flist_button_text in BUTTON_TEXT_FOLLOWING
-
-    def flist_button_is_not_following(self, flist_button_text):
-        return flist_button_text in BUTTON_TEXT_NOT_FOLLOWING
-
-    def flist_button_wait_following(self, flist_button):
-        self.log.debug('Waiting for entry to be in following state.')
-        return self.new_wait(flist_button).until(lambda e: e.text in BUTTON_TEXT_FOLLOWING)
-
-    def flist_button_wait_not_following(self, flist_button):
-        self.log.debug('Waiting for entry to be in non-following state.')
-        return self.new_wait(flist_button).until(lambda e: e.text in BUTTON_TEXT_NOT_FOLLOWING)
-
     def flist_header_overlap_y(self):
         header_locator = (By.XPATH, '(//div[@data-testid="primaryColumn"]/div/div)[1]')
         header_element = self.new_wait().until(EC.presence_of_element_located(header_locator))
@@ -365,7 +351,7 @@ class TwitterHandler(FollowerApplicationHandler):
         return False
 
     def _flist_bottom_notify_popover(self):
-        locator = (By.XPATH, '//*[@id="react-root"]//div[@role="alert"]/div[1]/span')
+        locator = (By.XPATH, '//*[@id="react-root"]/div/div/div[1]/div[2]/div/div/div[1]/span')
         try:
             return self.new_wait(timeout=0).until(EC.presence_of_element_located(locator))
         except TimeoutException:
