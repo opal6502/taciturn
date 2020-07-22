@@ -21,9 +21,7 @@ from selenium.webdriver.common.by import By
 from selenium.common.exceptions import (
     TimeoutException,
     NoSuchElementException,
-    StaleElementReferenceException,
-    InvalidSessionIdException,
-    WebDriverException
+    StaleElementReferenceException
 )
 
 from selenium.webdriver.support.ui import WebDriverWait
@@ -31,10 +29,8 @@ from selenium.webdriver.support import expected_conditions as EC
 
 from sqlalchemy import and_
 
-from taciturn.applications.base import (
-    FollowerApplicationHandler,
-    AppUnexpectedStateException
-)
+from taciturn.applications.base import AppUnexpectedStateException
+from taciturn.applications.follower import FollowerApplicationHandler
 
 from taciturn.db.followers import (
     Follower,
@@ -67,11 +63,12 @@ class InstagramHandler(FollowerApplicationHandler):
     button_text_following = ('Following', 'Requested')
     button_text_not_following = ('Follow',)
 
-    _followers_lighbox_prefix = '//div[@role="presentation"]/div[@role="dialog"]'
+    _flist_lighbox_prefix = '//div[@role="presentation"]/div[@role="dialog"]'
+    flist_prefix_xpath = _flist_lighbox_prefix + '/div/div[2]/ul/div/li[{}]'
 
     def __init__(self, app_account, driver=None):
         super().__init__(app_account, driver)
-        self.log.info('Starting twitter app handler.')
+        self.log.info('Starting instagram app handler.')
 
     def login(self):
         login_optional_wait_args = dict(ignored_exceptions=[StaleElementReferenceException, TimeoutException],
@@ -80,7 +77,7 @@ class InstagramHandler(FollowerApplicationHandler):
 
         self.driver.get(self.application_login_url)
 
-        # optional occurrence:  an initial login button is sometimes present:
+        # possible occurrence:  an initial login button is sometimes present:
         try:
             locator = (By.XPATH, '//*[@id="react-root"]/section/main/article//div[2]/button')
             exceptions = [StaleElementReferenceException, TimeoutException]
@@ -107,15 +104,70 @@ class InstagramHandler(FollowerApplicationHandler):
 
         # sometimes prompted with extra security, check if bypass necessary:
 
-        # optional occurrence:  bypass prompt to save our login info, if present:
+        # possible occurrence:  suspicious login attempt, text security code:
+        try:
+            suspicious_login_locator = (By.XPATH, '//*[@id="react-root"]/section/div/div/div[2]'
+                                                  '/h2[text()="We Detected An Unusual Login Attempt"]')
+            suspicious_login_phone_locator = (By.XPATH, '//*[@id="react-root"]/section/div/div/div[3]'
+                                                        '/form/div/div/label')
+            security_code_send_button_locator = (By.XPATH, '//*[@id="react-root"]/section/div/div/div[3]'
+                                                           '/form/span/button[text()="Send Security Code"]')
+            security_code_input_locator = (By.XPATH, '//input[@id="security_code"]')
+            security_code_submit_button_locator = (By.XPATH, '//*[@id="react-root"]/section/div/div/div[2]'
+                                                             '/form/span/button[text()="Submit"]')
+            security_code_incorrect_locator = (By.XPATH, '//*[@id="form_error"]'
+                                                         '/p[text()="Please check the code we sent you and try again."]')
+            login_optional_wait.until(EC.presence_of_element_located(suspicious_login_locator))
+            security_code_phone = login_optional_wait.\
+                until(EC.presence_of_element_located(suspicious_login_phone_locator)).text
+            self.log.warning("Suspicious login detected, requesting security code.")
+            self.log.warning("Sending security code to {}, check for message.".format(security_code_phone))
+            login_optional_wait.until(EC.presence_of_element_located(security_code_send_button_locator))\
+                                            .click()
+            while True:
+                security_code = input("Enter 6-digit security code: ")
+                login_optional_wait.until(EC.presence_of_element_located(security_code_input_locator))\
+                    .send_keys(security_code)
+                login_optional_wait.until(EC.presence_of_element_located(security_code_submit_button_locator))\
+                    .click()
+                # check for input failure:
+                try:
+                    login_optional_wait.until(EC.presence_of_element_located(security_code_incorrect_locator))
+                    self.log.warning("Code not accepted, try again.")
+                    login_optional_wait.until(EC.presence_of_element_located(security_code_input_locator)) \
+                        .send_keys(Keys.COMMAND + 'a' + Keys.BACKSPACE)
+                    continue
+                except TimeoutException:
+                    break
+
+            # apparently succeeded:
+            self.log.warning("Security code accepted.")
+        except TimeoutException:
+            self.log.info("No suspicious login prompt, skipping")
+
+        # possible occurrence:  bypass prompt to save our login info, if present:
         try:
             locator = (By.XPATH, '//button[contains(.,"Not Now")]')
             not_now_link = login_optional_wait.until(EC.presence_of_element_located(locator))
             not_now_link.click()
         except TimeoutException:
-            self.log.debug("No security dialog, skipping.")
+            self.log.debug("No save login prompt, skipping.")
 
-        # optional occurrence:  sometimes prompted with notifications on/off choice:
+        # possible occurrence:  sometimes prompted with an "add instagram to home screen?" choice:
+        try:
+            hs_dialog_locator = (By.XPATH, '/html/body/div[4]/div/div/div/div[2]/h2')
+            hs_cancel_button_locator = (By.XPATH, '//button[text()="Cancel"]')
+            hs_dialog_text = login_optional_wait.until(EC.presence_of_element_located(hs_dialog_locator))\
+                                .text
+            if hs_dialog_text == "Add Instagram to your Home screen?":
+                login_optional_wait.until(EC.presence_of_element_located(hs_cancel_button_locator))\
+                                       .click()
+        except TimeoutException:
+            self.log.debug("No home screen dialog, skipping.")
+
+        self.driver.refresh()
+
+        # possible occurrence:  sometimes prompted with notifications on/off choice:
         try:
             dialog_locator = (By.XPATH, '//div[@role="dialog"]')
             notify_text_locator = (By.XPATH, '//h2[contains(.,"Turn on Notifications")]')
@@ -127,18 +179,6 @@ class InstagramHandler(FollowerApplicationHandler):
                                     .click()
         except TimeoutException:
             self.log.debug("No notification dialog, skipping.")
-
-        # optional occurrence:  sometimes prompted with an "add instagram to home screen?" choice:
-        try:
-            hs_dialog_locator = (By.XPATH, '/html/body/div[4]/div/div/div/div[2]/h2')
-            hs_cancel_button_locator = (By.XPATH, '//button[text()="Cancel"]')
-            hs_dialog_text = login_optional_wait.until(EC.presence_of_element_located(hs_dialog_locator))\
-                                .text
-            if hs_dialog_text == "Add Instagram to your Home screen?":
-                login_optional_wait.until(EC.presence_of_element_located(hs_cancel_button_locator))\
-                                       .click()
-        except TimeoutException:
-            self.log.debug("No home screen dialog, skipping.")
 
         # verify login:
         self._header_logo_image()
@@ -156,8 +196,10 @@ class InstagramHandler(FollowerApplicationHandler):
             self.driver.get('{}/{}'.format(self.application_url, user_name))
         else:
             self.driver.get(self.application_url)
+            # regular browser selector or mobile browser selector:
             profile_link_locator = (By.XPATH, '//*[@id="react-root"]/section/main/section'
-                                              '/div[3]/div[1]/div/div[2]/div[1]/a')
+                                              '/div[3]/div[1]/div/div[2]/div[1]/a | '
+                                              '//*[@id="react-root"]/section/nav[2]/div/div/div[2]/div/div/div[5]/a')
             self.new_wait().until(EC.presence_of_element_located(profile_link_locator))\
                                         .click()
 
@@ -179,27 +221,37 @@ class InstagramHandler(FollowerApplicationHandler):
         return True
 
     def unfollow_confirm_button(self):
-        locator = (By.XPATH, self._followers_lighbox_prefix + '//button[contains(.,"Unfollow")]')
+        locator = (By.XPATH, self._flist_lighbox_prefix + '//button[contains(.,"Unfollow")]')
         return self.new_wait().until(EC.presence_of_element_located(locator))
 
     # flist methods:
 
+    def flist_current_locator(self):
+        locator = By.XPATH, self.flist_prefix_xpath.format(self.flist_get_position())
+        self.log.debug("flist_current_locator: {}".format(locator))
+        return locator
+
     def _flist_first_from_either(self):
-        locator = (By.XPATH, self._followers_lighbox_prefix + '/div/div[2]/ul/div/li[1]')
+        locator = (By.XPATH, self._flist_lighbox_prefix + '/div/div[2]/ul/div/li[1]')
         return self.new_wait().until(EC.presence_of_element_located(locator))
 
     def flist_first_from_following(self):
+        super().flist_first_from_following()
         return self._flist_first_from_either()
 
     def flist_first_from_followers(self):
+        super().flist_first_from_followers()
         return self._flist_first_from_either()
 
     def flist_next(self, flist_entry):
         locator = (By.XPATH, './following-sibling::li[1]')
-        return self.new_wait(flist_entry).until(EC.presence_of_element_located(locator))
+        flist_next_entry = self.flist_wait_find_at_current(locator=locator,
+                                                           flist_entry=flist_entry)
+        super().flist_next(None)
+        return flist_next_entry
 
     def _flist_last(self):
-        locator = (By.XPATH, self._followers_lighbox_prefix + '/div/div[2]/ul/div/li[last()]')
+        locator = (By.XPATH, self._flist_lighbox_prefix + '/div/div[2]/ul/div/li[last()]')
         return self.new_wait().until(EC.presence_of_element_located(locator))
 
     def flist_is_last(self, flist_entry):
@@ -211,28 +263,50 @@ class InstagramHandler(FollowerApplicationHandler):
 
     def flist_username(self, flist_entry):
         # ./div/div[1]/div[2]/div[1]/a
-        locator = (By.XPATH, './div/div[1]/div[2]/div[1]/a | ./div/div[2]/div[1]/div/div/a')
-        return self.wait_text(flist_entry, locator)
+        # locator = (By.XPATH, './div/div[1]/div[2]/div[1]/a | ./div/div[2]/div[1]/div/div/a')
+        locator = (By.CSS_SELECTOR, 'div > div > div > div > a, div > div > div > div > div > a')
+        return self.flist_wait_find_at_current(locator=locator,
+                                               flist_entry=flist_entry,
+                                               timeout=10,
+                                               text=True)
 
     def flist_image_is_default(self, flist_entry):
-        locator = (By.XPATH, './div/div[1]/div[1]/*[self::a or self::span]/img')
-        image_src = self.wait_attribute(flist_entry, locator, 'src')
+        # locator = (By.XPATH, './div/div[1]/div[1]/*[self::a or self::span]/img')
+        locator = (By.CSS_SELECTOR, 'div > div > div > a > img, div > div > div > span > img')
+        image_src = self.flist_wait_find_at_current(locator=locator,
+                                                    flist_entry=flist_entry,
+                                                    timeout=10,
+                                                    get_attribute='src')
         return self.is_default_image(image_src)
 
     def flist_is_verified(self, flist_entry):
-        locator = (By.XPATH, './div/div[2]/div[1]/div/div/span[@title="Verified"]')
+        # locator = (By.XPATH, './div/div[2]/div[1]/div/div/span[@title="Verified"]')
+        locator = (By.CSS_SELECTOR, 'div > div > div > div > div > span[title="Verified"]')
         try:
-            self.new_wait(flist_entry, timeout=0).until(EC.presence_of_element_located(locator))
+            self.flist_wait_find_at_current(locator=locator,
+                                            flist_entry=flist_entry,
+                                            timeout=0)
             return True
         except TimeoutException:
             return False
 
+    def _flist_button_locator(self):
+        # locator = (By.XPATH, './div/div[2]/button | ./div/div[3]/button')
+        return (By.CSS_SELECTOR, 'div > div > button')
+
     def flist_button(self, flist_entry):
-        locator = (By.XPATH, './div/div[2]/button | ./div/div[3]/button')
-        return self.new_wait(flist_entry).until(EC.presence_of_element_located(locator))
+        locator = self._flist_button_locator()
+        return self.flist_wait_find_at_current(locator=locator,
+                                               flist_entry=flist_entry)
+
+    def flist_button_text(self, flist_entry):
+        locator = self._flist_button_locator()
+        return self.flist_wait_find_at_current(locator=locator,
+                                               flist_entry=flist_entry,
+                                               text=True)
 
     def flist_header_overlap_y(self):
-        locator = (By.XPATH, self._followers_lighbox_prefix+'/div/div[2]')
+        locator = (By.XPATH, self._flist_lighbox_prefix + '/div/div[2]')
         element = self.new_wait().until(EC.presence_of_element_located(locator))
         offset_script = """
         var rect = arguments[0].getBoundingClientRect();
@@ -244,8 +318,16 @@ class InstagramHandler(FollowerApplicationHandler):
     def flist_is_blocked_notice(self):
         return False
 
-    def flist_is_follow_limit_notice(self):
-        return False
+    def flist_is_action_limit_notice(self):
+        locator = (By.XPATH, '/html/body/div[5]/div/div/div/div[1]/h3[text()="Try Again Later"]')
+        try:
+            self.new_wait(timeout=0).until(EC.presence_of_element_located(locator))
+            return True
+        except TimeoutException:
+            return False
+
+
+
 
 
     # old methods:

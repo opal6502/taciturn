@@ -16,27 +16,27 @@
 
 
 from taciturn.job import TaciturnJob, TaskExecutor, ApplicationHandlerStats
-from taciturn.applications.twitter import TwitterHandler
+from taciturn.applications.instagram import InstagramHandler
 
 
-class TwitterScanFollowersJob(TaciturnJob):
-    __jobname__ = 'twitter_update_followers'
-    __appnames__ = ['twitter']
+class InstagramScanFollowingJob(TaciturnJob):
+    __jobname__ = 'instagram_scan_following'
+    __appnames__ = ['instagram']
 
     def run(self):
         scan_stats = ApplicationHandlerStats()
-        twitter_account = self.get_account('twitter')
-        twitter_handler = TwitterHandler(twitter_account, scan_stats)
+        instagram_account = self.get_account('instagram')
+        instagram_handler = InstagramHandler(instagram_account, scan_stats)
 
         self.log.info("config: taciturn user = {}".format(self.username))
-        self.log.info("config: twitter user = {}".format(twitter_account.name))
+        self.log.info("config: twitter user = {}".format(instagram_account.name))
 
-        twitter_handler.login()
+        instagram_handler.login()
 
-        TaskExecutor(call=lambda: twitter_handler.update_followers(),
+        TaskExecutor(call=lambda: instagram_handler.update_following(),
                      job_name=self.job_name(),
                      handler_stats=scan_stats)\
                 .run()
 
 
-job = TwitterScanFollowersJob
+job = InstagramScanFollowingJob

@@ -15,111 +15,49 @@
 # along with Tactiurn.  If not, see <https://www.gnu.org/licenses/>.
 
 
-from selenium.common.exceptions import (
-    NoSuchElementException,
-    TimeoutException,
-    StaleElementReferenceException
-)
-
-from taciturn.job import TaciturnJob
-
+from taciturn.job import TaciturnJob, TaskExecutor, RoundTaskExecutor, ApplicationHandlerStats
 from taciturn.applications.instagram import InstagramHandler
-
-from datetime import timedelta
-from time import sleep, time
-import traceback
 
 
 class InstagramUnfollowJob(TaciturnJob):
     __jobname__ = 'instagram_unfollow'
-
-    def init_job(self, options, config=None):
-        super().init_job(options, config)
-
-        self.appnames = ['instagram']
-        self.accounts = dict()
-        self.username = options.user[0]
-
-        # pre-load accounts for all apps this job uses:
-        self.load_accounts()
-
-        self.stop_no_quota = options.stop
-
-        self.options = options
+    __appnames__ = ['instagram']
 
     def run(self):
-        # this script will handle following a total of X followers in Y rounds per day
-
-        # get user from database:
-        instagram_account = self.get_account('instagram')
-        instagram_handler = InstagramHandler(self.options, self.session, instagram_account)
-
-        # figure out what to do for the next 24 hours:
-
         daily_max_unfollows = self.options.max or self.config['app:instagram']['daily_max_unfollows']
         round_max_unfollows = self.options.quota or self.config['app:instagram']['round_max_unfollows']
         day_length = self.config['day_length']
-        round_retries = 5
+        instagram_account = self.get_account('instagram')
 
-        rounds_per_day = daily_max_unfollows // round_max_unfollows
-        print("rounds_per_day:", rounds_per_day)
-        round_timeout = day_length.total_seconds() / rounds_per_day
+        self.log.info("config: taciturn user = '{}'".format(self.username))
+        self.log.info("config: instagram user = '{}'".format(instagram_account.name))
+        self.log.info("config: daily_max_unfollows = {}".format(daily_max_unfollows))
+        self.log.info("config: round_max_unfollows = {}".format(round_max_unfollows))
 
-        instagram_handler.login()
+        update_followers_stats = ApplicationHandlerStats()
+        unfollow_stats = ApplicationHandlerStats()
+        twitter_handler = InstagramHandler(instagram_account, update_followers_stats)
+        twitter_handler.login()
 
-        total_job_time = 0
-        unfollowed_total = 0
-        failed_rounds = 0
+        TaskExecutor(
+                    call=lambda: twitter_handler.update_followers(),
+                    job_name=self.job_name(),
+                    driver=twitter_handler.driver,
+                    handler_stats=update_followers_stats)\
+                .run()
 
-        for round_n in range(1, rounds_per_day+1):
-            print("instagram_unfollow: beginning round {} for {} at twitter ...".format(round_n, self.username))
-
-            start_epoch = time()
-            unfollowed_count = 0
-
-            for retry_n in range(1, round_retries+1):
-                try:
-                    unfollowed_count = instagram_handler.start_unfollowing(quota=round_max_unfollows)
-                except (NoSuchElementException, TimeoutException, StaleElementReferenceException) as e:
-                    print("Round failed try {} of {}, selenium exception occurred: {}".format(retry_n, round_retries, e))
-                    traceback.print_exc()
-                    # if this is the last try and it failed, re-raise the exception!
-                    if retry_n >= round_retries:
-                        raise e
-                    continue
-                else:
-                    break
-            else:
-                print("instagram_unfollow: round failed after {} tries!".format(retry_n))
-                failed_rounds += 1
-
-            job_time = time() - start_epoch
-            sleep_time = round_timeout - job_time
-            if sleep_time < 0:
-                sleep_time = 0
-
-            if unfollowed_count < round_max_unfollows:
-                print("instagram_unfollow: couldn't fulfill quota:"
-                      " expected {} unfollows, actual {}.".format(round_max_unfollows, unfollowed_count))
-                if self.stop_no_quota:
-                    print("Quota unfulfilled, stopping unfollowing.")
-                    break
-            elif unfollowed_count == round_max_unfollows and round_n < rounds_per_day:
-                print("Unfollowed {} users, round complete."
-                      "  Sleeping for {} hours".format(unfollowed_count, timedelta(seconds=sleep_time)))
-
-            total_job_time += job_time
-            unfollowed_total += unfollowed_count
-            if round_n >= rounds_per_day:
-                break
-            sleep(sleep_time)
-
-        print("Ran {} rounds, unfollowing {} accounts, {} rounds failed"
-              .format(round_n, unfollowed_total, failed_rounds))
-        print("Job total time:", timedelta(seconds=total_job_time))
-
-        print("Job complete.")
-        instagram_handler.quit()
+        twitter_handler.stats = unfollow_stats
+        RoundTaskExecutor(
+                    call=lambda: twitter_handler.start_unfollowing(quota=round_max_unfollows),
+                    job_name=self.job_name(),
+                    driver=twitter_handler.driver,
+                    handler_stats=unfollow_stats,
+                    retries=1,
+                    quota=round_max_unfollows,
+                    max=daily_max_unfollows,
+                    stop_no_quota=self.stop_no_quota,
+                    period=day_length)\
+                .run()
 
 
-job = InstagramUnfollowJob()
+job = InstagramUnfollowJob

@@ -58,7 +58,7 @@ default_config = {
         'daily_max_unfollows': 400,
         'round_max_unfollows': 100,
 
-        # 5 seconds to 5 minutes:
+        # 5 seconds to 2 minutes:
         'action_timeout': (1000*5, 1000*60*2),
 
         'follow_back_hiatus': datetime.timedelta(days=7),
@@ -69,24 +69,30 @@ default_config = {
         'ignore_verified': False,
     },
     'app:instagram': {
-        'daily_max_follows': 400,
-        'round_max_follows': 20
+        # instagram supposedly has a max 500 daily actions!
+        'daily_max_follows': 500,
+        'round_max_follows': 125,
+        'daily_max_unfollows': 500,
+        'round_max_unfollows': 125,
     },
     'app:youtube': {
         'video_watch_timeout': (2*60, 5*60),
         'like_every_video': True
     },
     'app:twitter': {
-
+        'daily_max_follows': 400,
+        'round_max_follows': 100,
+        'daily_max_unfollows': 800,
+        'round_max_unfollows': 200,
     },
     'app:soundcloud': {
-        'daily_max_follows': 400,
+        'daily_max_follows': 40,
         'round_max_follows': 40,
         'daily_max_unfollows': 40,
         'round_max_unfollows': 40,
 
-        'action_timeout': (1000 * 5, 1000 * 30),
-
+        # for development:
+        'action_timeout': (1000*5, 1000*30),
     },
 }
 
@@ -95,7 +101,7 @@ supported_applications = (
     'instagram',
     'facebook',
     'soundcloud',
-    'youtube'
+    # 'youtube'
 )
 
 global_config = None

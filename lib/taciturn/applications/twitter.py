@@ -21,7 +21,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.keys import Keys
 
-from taciturn.applications.base import FollowerApplicationHandler
+from taciturn.applications.follower import FollowerApplicationHandler
 
 
 class TwitterHandler(FollowerApplicationHandler):
@@ -262,16 +262,19 @@ class TwitterHandler(FollowerApplicationHandler):
     # XXX NEW 0.2a flist METHODS!
 
     def flist_first_from_following(self):
+        super().flist_first_from_following()
         locator = (By.XPATH, '//section[starts-with(@aria-labelledby, "accessible-list-")]'
                              '/div[@aria-label="Timeline: Following"]/div/div/div[1]')
         return self.new_wait().until(EC.presence_of_element_located(locator))
 
     def flist_first_from_followers(self):
+        super().flist_first_from_followers()
         locator = (By.XPATH, '//section[starts-with(@aria-labelledby, "accessible-list-")]'
                              '/div[@aria-label="Timeline: Followers"]/div/div/div[1]')
         return self.new_wait().until(EC.presence_of_element_located(locator))
 
     def flist_next(self, flist_entry):
+        super().flist_next(None)
         locator = (By.XPATH, './following-sibling::div[1]')
         return self.new_wait(flist_entry).until(EC.presence_of_element_located(locator))
 
@@ -282,10 +285,10 @@ class TwitterHandler(FollowerApplicationHandler):
         # need to thoroughly check for absence of a proper entry, here we check by username ...
         username_locator = self._flist_username_locator()
         try:
-            self.new_wait(flist_entry, timeout=10)\
+            self.new_wait(flist_entry, timeout=20)\
                 .until(EC.presence_of_element_located(username_locator))
             return False
-        except TimeoutException as e:
+        except TimeoutException:
             pass
         # then, try to check for an empty node, will raise TimeoutException if not found:
         empty_locator = (By.XPATH, './div/div[not(node())]')
@@ -321,6 +324,9 @@ class TwitterHandler(FollowerApplicationHandler):
         locator = (By.XPATH, './div/div/div/div[2]/div/div[2]/div/div/span/span')
         return self.new_wait(flist_entry).until(EC.presence_of_element_located(locator))
 
+    def flist_button_text(self, flist_entry):
+        return self.flist_button(flist_entry).text
+
     def flist_header_overlap_y(self):
         header_locator = (By.XPATH, '(//div[@data-testid="primaryColumn"]/div/div)[1]')
         header_element = self.new_wait().until(EC.presence_of_element_located(header_locator))
@@ -340,7 +346,7 @@ class TwitterHandler(FollowerApplicationHandler):
             return True
         return False
 
-    def flist_is_follow_limit_notice(self):
+    def flist_is_action_limit_notice(self):
         popover = self._flist_bottom_notify_popover()
         if popover is None:
             return False
@@ -351,10 +357,12 @@ class TwitterHandler(FollowerApplicationHandler):
         return False
 
     def _flist_bottom_notify_popover(self):
-        locator = (By.XPATH, '//*[@id="react-root"]/div/div/div[1]/div[2]/div/div/div[1]/span')
+        locator = (By.XPATH, '//*[@id="react-root"]/div/div/div[1]/div[2]/div/div/div/div/div[1]/span | '
+                             '//*[@id="react-root"]/div/div/div[1]/div[2]/div/div/div[1]/span')
         try:
-            return self.new_wait(timeout=0).until(EC.presence_of_element_located(locator))
-        except TimeoutException:
+            return self.driver.find_element(*locator)
+        except (NoSuchElementException, StaleElementReferenceException):
+            # self.log.exception("_flist_bottom_notify_popover: Got exception!")
             return None
 
 

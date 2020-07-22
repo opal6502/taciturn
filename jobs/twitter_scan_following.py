@@ -39,4 +39,4 @@ class TwitterScanFollowingJob(TaciturnJob):
                 .run()
 
 
-job = TwitterScanFollowingJob()
+job = TwitterScanFollowingJob

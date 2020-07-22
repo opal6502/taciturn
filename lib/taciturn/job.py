@@ -161,7 +161,7 @@ class TaskExecutor:
                 self.log.info("Task: end of list encountered.")
                 break
             except AppUserPrivilegeSuspendedException:
-                self.log.info("Task: incomplete: user privileges revoked by application.")
+                self.log.warning("Task: incomplete: user privileges revoked by application.")
                 self.take_screenshot()
                 self.log_report(incomplete=True)
                 return
@@ -192,7 +192,7 @@ class TaskExecutor:
                                   datetime.fromtimestamp(self.task_start_time),
                                   datetime.now(),
                                   timedelta(seconds=self.total_time+(time() - self.task_start_time))))
-            self.log.info("Task: cancelled.")
+            self.log.info("Task: interrupted.")
         else:
             self.log.info("Task: complete: operations = {}; failures = {}; "
                           "start_time = '{}'; end_time = '{}'; task_time = '{}';"
@@ -257,11 +257,11 @@ class RoundTaskExecutor(TaskExecutor):
                     self.log.info("Task: end of list encountered.")
                     break
                 except AppUserPrivilegeSuspendedException:
-                    self.log.info("Task: incomplete: user privileges revoked by application.")
+                    self.log.warning("Task: incomplete: user privileges revoked by application.")
                     self.take_screenshot()
                     self.log_report(incomplete=True)
-                    raise RuntimeError("Exiting!")
-                    return
+                    raise RuntimeError("Debug exception!")
+                    # return
                 except Exception as e:
                     self.log.exception("Task: round {} of {} failed, try {} of {}; exception occurred: {}"
                                           .format(round_n, self.total_rounds, try_n, self.retries, str(e)))
@@ -320,9 +320,9 @@ class RoundTaskExecutor(TaskExecutor):
                           "start_time = '{}'; end_time = '{}'; task_time = '{}';"
                           .format(round_n, round.operations,
                                            round.failures,
-                                           datetime.fromtimestamp(round.start_time),
-                                           datetime.fromtimestamp(round.end_time),
-                                           timedelta(seconds=round.task_time)))
+                                           round.start_time,
+                                           round.end_time,
+                                           round.task_time))
         round_n += 1
         if incomplete is True:
             self.log.info("Task: incomplete round #{}: operations = {}; failures = {}; "
@@ -332,7 +332,7 @@ class RoundTaskExecutor(TaskExecutor):
                                            datetime.fromtimestamp(self.task_start_time),
                                            datetime.now(),
                                            timedelta(seconds=self.total_time+(time() - self.task_start_time))))
-            self.log.info("Task: cancelled.")
+            self.log.info("Task: interrupted.")
         else:
             self.log.info("Task: finished.")
 
