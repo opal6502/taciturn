@@ -894,7 +894,12 @@ class TwitterHandlerWebElements(ApplicationWebElements):
         return self.driver.find_element(
             By.XPATH,
             '//*[@id="react-root"]/div/div/div[1]/div[2]/div/div'
-            '/div/div[2]/div[2]/div[3]/div[2]/div/span/span[text() = "Unfollow"]')
+            '/div/div[2]/div[2]/div[3]/div[2]/div/span/span[text() = "Unfollow"] | '
+            '//*[@id="react-root"]/div/div/div[1]/div[2]/div/div/div/div/div/div[2]'
+            '/div[2]/div[3]/div[2]/div/span/span[text() = "Unfollow"]')
+
+# //*[@id="react-root"]/div/div/div[1]/div[2]/div/div/div/div[2]/div[2]/div[3]/div[2]/div/span/span[text() = "Unfollow"]
+# //*[@id="react-root"]/div/div/div[1]/div[2]/div/div/div/div/div/div[2]/div[2]/div[3]/div[2]/div/span/span[text() = "Unfollow"]
 
 # twitter specific exceptions:
 

@@ -134,22 +134,24 @@ class FacebookHandler(BaseApplicationHandler):
                 create_post_input.send_keys(link_url+' ')
 
                 print("pagepost_esablish_link: scanning for link preview image ({}) ...".format(parsed_link.netloc))
-                preview_image = self.e.page_post_link_image(parsed_link.netloc)
+                preview_image = self.e.page_post_link_preview_image()
                 if preview_image is not None:
-                    print("Got preview image!")
 
                     #for n in range(len(link_url)+1):
                     #    create_post_input.send_keys(Keys.BACKSPACE)
-
+                    sleep(10)
                     create_post_input.send_keys(Keys.COMMAND + 'a')
                     create_post_input.send_keys(Keys.BACKSPACE)
 
                     # take a look at this ajaxy input field ...
                     # create_post_input = self.e.page_post_input()
-                    with open('pagepost_esablish_link.html', 'w') as f:
-                        f.write(create_post_input.get_attribute('innerHTML'))
+                    # with open('pagepost_esablish_link.html', 'w') as f:
+                    #    f.write(create_post_input.get_attribute('innerHTML'))
 
                     return True
+                else:
+                    print('Couldn\'t get preview image!')
+                    continue
             except (StaleElementReferenceException, NoSuchElementException, ElementClickInterceptedException) as e:
                 print('pagepost_esablish_link: caught exception:', e)
                 # sleep(5)
@@ -211,7 +213,7 @@ class FacebookHandlerWebElements(ApplicationWebElements):
         return self.driver.find_element(
             By.XPATH, '//div[@aria-label="Remove post attachment"]/i')
 
-    def page_post_link_image(self, link_domain, retries=20):
+    def page_post_link_preview_image(self, retries=20):
         # html of post image in preview:
         # <img height="261" width="500" alt="Schlake Opus (track), by Anvil Mesa"
         # class="i09qtzwb n7fi1qx3 datstx6m pmk7jnqg j9ispegn kr520xx4 k4urcfbm bixrwtb6"
@@ -221,12 +223,31 @@ class FacebookHandlerWebElements(ApplicationWebElements):
         # this seems pretty good:
         # //a[contains(@href, "{domain}")]//img
         for try_n in range(1, retries+1):
+            try:
+                self.driver.implicitly_wait(90)
+                # check for the loading screen, and wait for it to pass
+                # <div aria-busy="true" aria-valuemax="100" aria-valuemin="0" aria-valuetext="Loading..."
+                # role="progressbar" tabindex="0" data-visualcompletion="loading-state"
+                preview_loading = self.driver.find_element(
+                    By.XPATH, '//*[@id="mount_0_0"]/div/div/div[1]/div[4]'
+                              '//div[@data-visualcompletion="loading-state" and @role="progressbar"]')
+                print('waiting for preview to load ...')
+                WebDriverWait(self.driver, timeout=90).until(EC.invisibility_of_element(preview_loading))
+                print('preview loaded.')
+            except (TimeoutException, NoSuchElementException, StaleElementReferenceException) as e:
+                pass
+            finally:
+                self.driver.implicitly_wait(self.implicit_default_wait)
+
             try:  # following-sibling::div
                 self.driver.implicitly_wait(0)
-                print("page_post_link_image: scanning for image with domain '{}'".format(link_domain))
-                img_element = self.driver.find_element(By.XPATH, '//a[contains(@href,"{}")]//img'.format(link_domain))
-                print("page_post_link_image: img_element =", img_element)
-                return img_element
+
+                print("page_post_link_image: scanning for image (x) button")
+                img_xbox = self.driver.find_element(By.XPATH,
+                                                    '//div[@aria-label="Remove post attachment"]/i')
+                WebDriverWait(self.driver, timeout=90).until(EC.visibility_of(img_xbox))
+                print("(x) is visible?")
+                return True
             except (StaleElementReferenceException, NoSuchElementException) as e:
                 # print('page_post_link_image: caught exception:', e)
                 sleep(0.2)
@@ -285,6 +306,7 @@ class FacebookHandlerWebElements(ApplicationWebElements):
             except (StaleElementReferenceException, NoSuchElementException) as e:
                 print('page_post_link: caught exception:', e)
 
+                self.driver.execute_script("window.scrollTo(0,0);")
                 offset = self.page_admin_overhang_bottom()
                 self.driver.execute_script("arguments[0].scrollIntoView();", page_post)
                 scroll_position = self.driver.execute_script("return document.documentElement.scrollTop;")
