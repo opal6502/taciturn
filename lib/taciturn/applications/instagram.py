@@ -728,13 +728,20 @@ class InstagramHandler(FollowerApplicationHandler):
                 WebDriverWait(unfollow_entry, 60).until(
                     lambda e: self.e.follower_button(e).text in BUTTON_TEXT_NOT_FOLLOWING)
 
-                # create a new unfollow entry:
-                new_unfollowed = Unfollowed(name=following_db.name,
-                                            established=datetime.now(),
-                                            user_id=following_db.user_id,
-                                            application_id=following_db.application_id)
+                # create a new unfollow entry, check if one already exists:
+                unfollowed = self.session.query(Unfollowed).filter(
+                    and_(Unfollowed.name == unfollow_username,
+                         Unfollowed.user_id == self.app_account.user_id,
+                         Unfollowed.application_id == Application.id,
+                         Application.name == self.application_name)) \
+                    .one_or_none()
+                if unfollowed is None:
+                    new_unfollowed = Unfollowed(name=following_db.name,
+                                                established=datetime.now(),
+                                                user_id=following_db.user_id,
+                                                application_id=following_db.application_id)
+                    self.session.add(new_unfollowed)
 
-                self.session.add(new_unfollowed)
                 self.session.delete(following_db)
 
                 self.session.commit()
@@ -866,6 +873,9 @@ class InstagramHandler(FollowerApplicationHandler):
 
                 caption_input = self.driver.find_element(By.XPATH, '//textarea[@aria-label="Write a caption…"]')
                 caption_input.send_keys(post_body)
+
+                share_button = self.driver.find_element(By.XPATH, '//button[text() = "Share"]')
+                share_button.click()
             except (NoSuchElementException, StaleElementReferenceException) as e:
                 print("Exception (3): ", e)
                 if try_n == retries:
@@ -875,10 +885,7 @@ class InstagramHandler(FollowerApplicationHandler):
                 self.driver.implicitly_wait(self.implicit_default_wait)
 
             try:
-                self.driver.implicitly_wait(5)
-
-                share_button = self.driver.find_element(By.XPATH, '//button[text() = "Share"]')
-                share_button.click()
+                self.driver.implicitly_wait(30)
                 # wait for the header image to be present, to verify submission ...
                 self.e.instagram_header_img()
                 break
