@@ -182,7 +182,8 @@ class SoundcloudHandler(FollowerApplicationHandler):
 
         # click 'Next' button:
         # //*[@id="identifierNext"]/div/span/span[text() = "Next"]
-        google_next_button = self.driver.find_element(By.XPATH, '//*[@id="identifierNext"]/div/span/span[text()="Next"]')
+        google_next_button = self.driver.find_element(
+            By.XPATH, '//*[@id="identifierNext"]//button')
         google_next_button.click()
 
         # enter password:
@@ -192,7 +193,8 @@ class SoundcloudHandler(FollowerApplicationHandler):
 
         # click the 'Next' button:
         # //*[@id="passwordNext"]/div/span/span[text() = "Next"]
-        google_next_button = self.driver.find_element(By.XPATH, '//*[@id="passwordNext"]/div/span/span[text()="Next"]')
+        google_next_button = self.driver.find_element(
+            By.XPATH, '//*[@id="passwordNext"]//button')
         google_next_button.click()
 
         # goto soundcloud main page:

@@ -41,5 +41,16 @@ site_config = {
     #     'daily_max_unfollows': 200,
     #     'round_max_unfollows': 50,
     # },
-
+    'app:twitter': {
+        'daily_max_follows': 400,
+        'round_max_follows': 100,
+        'daily_max_unfollows': 400,
+        'round_max_unfollows': 100,
+    },
+    'app:instagram': {
+        'daily_max_follows': 400,
+        'round_max_follows': 100,
+        'daily_max_unfollows': 400,
+        'round_max_unfollows': 100,
+    }
 }
