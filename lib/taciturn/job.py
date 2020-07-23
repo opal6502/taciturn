@@ -260,8 +260,7 @@ class RoundTaskExecutor(TaskExecutor):
                     self.log.warning("Task: incomplete: user privileges revoked by application.")
                     self.take_screenshot()
                     self.log_report(incomplete=True)
-                    raise RuntimeError("Debug exception!")
-                    # return
+                    return
                 except Exception as e:
                     self.log.exception("Task: round {} of {} failed, try {} of {}; exception occurred: {}"
                                           .format(round_n, self.total_rounds, try_n, self.retries, str(e)))

@@ -32,8 +32,8 @@ class InstagramFollowJob(TaciturnJob):
         self.target_account = self.options.target[0]
 
     def run(self):
-        daily_max_follows = self.options.max or self.config['app:twitter']['daily_max_follows']
-        round_max_follows = self.options.quota or self.config['app:twitter']['round_max_follows']
+        daily_max_follows = self.options.max or self.config['app:instagram']['daily_max_follows']
+        round_max_follows = self.options.quota or self.config['app:instagram']['round_max_follows']
         day_length = self.config['day_length']
         instagram_account = self.get_account('instagram')
 
