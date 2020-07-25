@@ -15,16 +15,6 @@
 # along with Tactiurn.  If not, see <https://www.gnu.org/licenses/>.
 
 
-# SQLAlchemy:
-from sqlalchemy import and_
-
-from taciturn.db.base import (
-    Application,
-    User,
-    Whitelist,
-    Blacklist
-)
-
 from taciturn.config import get_config, get_options, get_logger, get_session
 
 from selenium.webdriver import Chrome, Firefox, Remote
@@ -32,9 +22,9 @@ from selenium import webdriver
 
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, StaleElementReferenceException
 from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 from abc import ABC
-from abc import abstractmethod
 
 # for default image compare processing:
 from PIL import Image, ImageChops
@@ -42,9 +32,8 @@ import requests
 from io import BytesIO
 
 import os
+import urllib.parse
 from time import time, sleep
-import random
-import numbers
 from datetime import datetime, timedelta
 from hashlib import sha256
 from http.cookiejar import MozillaCookieJar
@@ -62,18 +51,11 @@ class BaseApplicationHandler(ABC):
     webdriver_user_agent = None
     webdriver_wait_ignored_exceptions = (StaleElementReferenceException, NoSuchElementException)
 
-    def __init__(self, app_account, handler_stats, driver=None):
+    def __init__(self, driver=None):
         self.config = get_config()
         self.log = get_logger()
         self.options = get_options()
         self.session = get_session()
-
-        self.app_username = app_account.name
-        self.app_password = app_account.password
-        self.app_account = app_account
-
-        self.stats = handler_stats
-        self._last_action = None
 
         self.assets_dir = self.config['assets_dir']
         self.screenshots_dir = self.config.get('screenshots_dir')
@@ -86,25 +68,8 @@ class BaseApplicationHandler(ABC):
         config_name = 'app:'+self.application_name
         self.action_timeout = self.config[config_name]['action_timeout']
 
-        # init white/blacklists:
-        self._load_access_lists()
-
-    def _load_access_lists(self):
-        self.log.info('Loading whitelist.')
-        wl = self.session.query(Whitelist.name)\
-                        .filter(and_(Whitelist.user_id == self.app_account.user_id,
-                                     Whitelist.application_id == Application.id,
-                                     Application.name == self.application_name,
-                                     Application.id == Whitelist.application_id))
-        self.whitelist = {w.lower() for w, in wl}
-
-        self.log.info('Loading blacklist.')
-        bl = self.session.query(Blacklist.name)\
-                        .filter(and_(Blacklist.user_id == self.app_account.user_id,
-                                     Blacklist.application_id == Application.id,
-                                     Application.name == self.application_name,
-                                     Application.id == Blacklist.application_id))
-        self.blacklist = {b.lower() for b, in bl}
+        if self.options.cookies:
+            self.load_cookies(self.options.cookies[0])
 
     def _init_webdriver(self):
         # init Selenium webdriver:
@@ -165,18 +130,15 @@ class BaseApplicationHandler(ABC):
             self.log.critical("Webdriver '{}' not supported, check config!".format(webdriver_type))
             raise TypeError("Webdriver '{}' not supported, check config!".format(webdriver_type))
 
+    def goto_path(self, page_path):
+        self.driver.get(self.application_url+'/'+page_path)
+
     def load_cookies(self, cookie_file):
         self.log.info("loading cookies from {}".format(cookie_file))
         cookiejar = MozillaCookieJar(cookie_file)
         cookiejar.load()
         for c in cookiejar:
             self.driver.get_cookie({'name': c.name, 'value': c.value})
-
-    def in_whitelist(self, name):
-        return name.lower() in self.whitelist
-
-    def in_blacklist(self, name):
-        return name.lower() in self.blacklist
 
     def quit(self):
         self.log.info('Quitting.')
@@ -185,91 +147,65 @@ class BaseApplicationHandler(ABC):
         del self.driver
         del self.session
 
-    @abstractmethod
-    def login(self):
-        pass
-
-    @abstractmethod
-    def goto_homepage(self):
-        pass
-
-    @abstractmethod
-    def goto_profile_page(self, user_name=None):
-        pass
-
-    def goto_login_page(self):
-        self.log.info("Going to login page: {}".format(self.application_login_url))
-        self.driver.get(self.application_login_url)
-
-    def download_image(self, image_url, prefix=None, file_extension='.jpg'):
-        if prefix is None:
-            prefix = self.application_name+'-'
-
-        file_name = prefix + sha256(str(datetime.now()).encode('utf-8')).hexdigest()+file_extension
-        local_file_name = os.path.join(self.assets_dir, 'application', self.application_name, file_name)
-
-        image_request = requests.get(image_url, stream=True)
-        if image_request.status_code == 200:
-            with open(local_file_name, 'wb') as f:
-                for chunk in image_request:
-                    f.write(chunk)
-        return local_file_name
-
-    def is_default_image(self, image_url, default_image=None):
-        return self.image_cmp(
-            image_url,
-            default_image or os.path.join(self.assets_dir, 'application', self.application_name,
-                                          default_image or self.default_profile_image))
-
-    def scrollto_element(self, element, y_offset=None):
+    def element_scroll_to(self, element, y_offset=None):
         self.driver.execute_script("arguments[0].scrollIntoView();", element)
         if y_offset is not None:
             scroll_position = self.driver.execute_script("return document.documentElement.scrollTop;")
             self.driver.execute_script("window.scrollTo(0, arguments[0]);", scroll_position - y_offset)
 
-    def last_action_mark(self):
-        self._last_action = time()
+    def element_rect_bottom(self, element):
+        return self.driver.execute_script(self._element_rect_script('bottom'), element)
 
-    def last_action_pause(self, r=None):
-        if r is None:
-            r = self.action_timeout
-        if isinstance(r, tuple) and len(r) == 2:
-            sleep_duration = random.randrange(r[0], r[1]) / 1000
-        elif isinstance(r, numbers.Real):
-            sleep_duration = r / 1000
+    def element_rect_top(self, element):
+        return self.driver.execute_script(self._element_rect_script('top'), element)
+
+    def _element_rect_script(self, side):
+        return f"var rect = arguments[0].getBoundingClientRect(); return rect.{side};"
+
+    def temp_download_file(self, file_url, prefix=None, retries=10):
+        # properly parse the url and get the extension:
+        parsed_link = urllib.parse.urlparse(file_url)
+        parsed_path, parsed_ext = os.path.splitext(parsed_link.path)
+
+        if prefix:
+            filename_prefix = prefix
         else:
-            raise TypeError("pause_last_action: takes one integer or a two-tuple of millisecond values.")
+            filename_prefix = self.application_name
 
-        if self._last_action is not None and \
-            time() < (self._last_action + sleep_duration):
-            corrected_sleep_duration = (self._last_action + sleep_duration) - time()
-            self.log.info("Pausing action for {}".format(timedelta(seconds=corrected_sleep_duration)))
-            sleep(corrected_sleep_duration)
+        filename_hash = sha256(str(datetime.now()).encode('utf-8')).hexdigest()
+
+        if parsed_ext:
+            filename = f'{filename_prefix}-{filename_hash}.{parsed_ext}'
         else:
-            self.log.debug("No pause necessary.")
+            filename = f'{filename_prefix}-{filename_hash}'
 
-    @staticmethod
-    def image_cmp(image1_file, image2_file):
-        """Compare two images from url or disk path
-            if image1_path or image2_path is a valid URL, we try
-            to download it, if it's not a valid URL, we try to read it
-            from the filesystem!
+        filename_with_path = os.path.join(self.assets_dir, 'application', self.application_name, filename)
 
-            We fetch URLs using BytesIO, so no tmp files are created!
-        """
-        try:
-            response = requests.get(image1_file)
-            image1_file = Image.open(BytesIO(response.content))
-        except (requests.exceptions.MissingSchema, requests.exceptions.URLRequired, ) as e:
-            # print("Image {} is not valid URL, trying as path ...".format(image1_path, e))
-            image1_file = Image.open(image1_file)
+        for try_n in range(1, retries+1):
+            try:
+                image_request = requests.get(file_url, stream=True)
+            except requests.exceptions.ConnectionError as e:
+                if try_n >= retries:
+                    raise e
+                continue
 
-        try:
-            response = requests.get(image2_file)
-            image2_file = Image.open(BytesIO(response.content))
-        except (requests.exceptions.MissingSchema, requests.exceptions.URLRequired) as e:
-            # print("Image {} is not valid URL, trying as path ...".format(image2_path, e))
-            image2_file = Image.open(image2_file)
+        if image_request.status_code == 200:
+            with open(filename_with_path, 'wb') as f:
+                for chunk in image_request:
+                    f.write(chunk)
+        else:
+            raise ConnectionError(f"Got unexpected response code: {image_request.status_code}")
+
+        return filename_with_path
+
+    def is_default_image(self, image_url):
+        return self.image_cmp(
+            image_url,
+            os.path.join(self.assets_dir, 'application', self.application_name, self.default_profile_image))
+
+    def image_cmp(self, image1_url_or_path, image2_url_or_path):
+        image1_file = self.open_image_file_or_url(image1_url_or_path)
+        image2_file = self.open_image_file_or_url(image2_url_or_path)
 
         try:
             if ImageChops.difference(image1_file, image2_file).getbbox():
@@ -277,6 +213,23 @@ class BaseApplicationHandler(ABC):
         except ValueError:
             return False
         return True
+
+    def open_image_file_or_url(self, image_url_or_path, retries=10):
+        for try_n in range(1, retries+1):
+            try:
+                response = requests.get(image_url_or_path)
+                return Image.open(BytesIO(response.content))
+            except requests.exceptions.ConnectionError as e:
+                # connection error occurred:
+                self.log.exception(f"Exception occurred while fetching image: "
+                                   f"'{image_url_or_path}', try {try_n} of {retries}.")
+                if try_n >= retries:
+                    raise e
+                else:
+                    continue
+            except (requests.exceptions.MissingSchema, requests.exceptions.URLRequired):
+                # try url as path:
+                return Image.open(image_url_or_path)
 
     def app_asset_prefix(self):
         return os.path.join(self.assets_dir, self.application_asset_dirname)
@@ -300,7 +253,7 @@ class BaseApplicationHandler(ABC):
             try:
                 return driver.find_element(*locator).text
             except ignored_exceptions as e:
-                self.log.error("wait_text: Caught exception!")
+                self.log.exception("wait_text: Caught exception!")
 
             if time() > wait_until:
                 raise TimeoutException("Couldn't get element text.")
@@ -320,6 +273,16 @@ class BaseApplicationHandler(ABC):
             if time() > wait_until:
                 raise TimeoutException("Couldn't get element text.")
 
+    def kill_javascript_alert(self):
+        try:
+            self.new_wait(timeout=3).until(EC.alert_is_present())
+            alert = self.driver.switch_to.alert
+            alert.accept()
+        except TimeoutException:
+            pass
+        finally:
+            self.driver.switch_to.default_content()
+
 
 # app state exceptions:
 
@@ -328,18 +291,7 @@ class AppException(Exception):
     pass
 
 
-class AppEndOfListException(AppException):
-    "Raise whenever a list end is encountered"
-    pass
-
-
-class AppUserPrivilegeSuspendedException(AppException):
-    "Raise whenever a user privilege has been suspended"
-    pass
-
-
 class AppUnexpectedStateException(AppException):
     "App is in an unexpected state"
     pass
-
 

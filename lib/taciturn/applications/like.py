@@ -15,12 +15,12 @@
 # along with Tactiurn.  If not, see <https://www.gnu.org/licenses/>.
 
 
-from taciturn.applications.base import BaseApplicationHandler
+from taciturn.applications.login import LoginApplicationHandler
 
 from abc import abstractmethod
 
 
-class LikeApplicationHandler(BaseApplicationHandler):
+class LikeApplicationHandler(LoginApplicationHandler):
 
     def __init__(self, app_account, handler_stats, driver=None):
         super().__init__(app_account, handler_stats, driver)

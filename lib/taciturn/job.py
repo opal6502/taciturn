@@ -23,7 +23,7 @@ import os
 
 from taciturn.config import get_config, get_options, init_logger, get_logger, get_session
 from taciturn.db.base import User, Application, AppAccount, JobId
-from taciturn.applications.base import AppEndOfListException, AppUserPrivilegeSuspendedException
+from taciturn.applications.login import AppEndOfListException, AppUserPrivilegeSuspendedException
 
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
@@ -157,6 +157,14 @@ class TaskExecutor:
                 self.log.exception("Task: incomplete: cancelled by keyboard interrupt.")
                 self.log_report(incomplete=True)
                 sys.exit(1)
+            except SystemExit:
+                self.log.exception("Task: incomplete: cancelled by system exit.")
+                self.log_report(incomplete=True)
+                sys.exit(1)
+            except SystemError:
+                self.log.exception("Task: incomplete: cancelled by system error.")
+                self.log_report(incomplete=True)
+                sys.exit(1)
             except AppEndOfListException:
                 self.log.info("Task: end of list encountered.")
                 break
@@ -253,6 +261,14 @@ class RoundTaskExecutor(TaskExecutor):
                     self.log.exception("Task: cancelled by keyboard interrupt.")
                     self.log_report(incomplete=True)
                     sys.exit(1)
+                except SystemExit:
+                    self.log.exception("Task: incomplete: cancelled by system exit.")
+                    self.log_report(incomplete=True)
+                    sys.exit(1)
+                except SystemError:
+                    self.log.exception("Task: incomplete: cancelled by system error.")
+                    self.log_report(incomplete=True)
+                    sys.exit(1)
                 except AppEndOfListException:
                     self.log.info("Task: end of list encountered.")
                     break
@@ -278,7 +294,8 @@ class RoundTaskExecutor(TaskExecutor):
 
             task_time = time() - self.task_start_time
             task_sleep_time = self.task_timeout - task_time
-            if task_sleep_time < 0:
+            if (task_sleep_time < 0 or
+                    round_n >= self.total_rounds or self.operations_total >= self.max):
                 task_sleep_time = 0
 
             self.total_time += task_time
@@ -300,7 +317,8 @@ class RoundTaskExecutor(TaskExecutor):
                                        failures=try_n-1,
                                        start_time=datetime.fromtimestamp(self.task_start_time),
                                        end_time=datetime.now(),
-                                       task_time=timedelta(seconds=task_time))
+                                       task_time=timedelta(seconds=task_time),
+                                       task_sleep_time=timedelta(seconds=task_sleep_time))
 
             # last round, no need to sleep:
             if round_n >= self.total_rounds or self.operations_total >= self.max:
@@ -308,29 +326,70 @@ class RoundTaskExecutor(TaskExecutor):
 
             self.log.info("Task: sleeping for {} until next round."
                              .format(timedelta(seconds=task_sleep_time)))
-            sleep(task_sleep_time)
+            try:
+                self.task_sleep_start = time()
+                sleep(task_sleep_time)
+            except KeyboardInterrupt:
+                self.log.exception("Task: cancelled by keyboard interrupt.")
+                self.log_report(incomplete=True)
+                sys.exit(1)
+            except SystemExit:
+                self.log.exception("Task: incomplete: cancelled by system exit.")
+                self.log_report(incomplete=True)
+                sys.exit(1)
+            except SystemError:
+                self.log.exception("Task: incomplete: cancelled by system error.")
+                self.log_report(incomplete=True)
+                sys.exit(1)
 
         self.log_report()
 
     def log_report(self, incomplete=False):
         round_n = 0
+        total_operations = 0
+        total_failures = 0
+        total_task_time = timedelta(seconds=0)
+        total_sleep_time = timedelta(seconds=0)
+        total_job_time = timedelta(seconds=0)
         for round_n, round in enumerate(self.round_stats.all_rounds(), 1):
-            self.log.info("Task: complete round #{}: operations = {}; failures = {}; "
-                          "start_time = '{}'; end_time = '{}'; task_time = '{}';"
-                          .format(round_n, round.operations,
-                                           round.failures,
-                                           round.start_time,
-                                           round.end_time,
-                                           round.task_time))
+            self.log.info(f"Task: complete round #{round_n}: "
+                          f"operations = {round.operations}; "
+                          f"failures = {round.failures}; "
+                          f"start_time = '{round.start_time}'; "
+                          f"end_time = '{round.end_time}'; "
+                          f"task_time = '{round.task_time}'; "
+                          f"task_sleep_time = {round.task_sleep_time}")
+            total_operations += round.operations
+            total_failures += round.failures
+            total_task_time += round.task_time
+            total_sleep_time += round.task_sleep_time
+            total_job_time += round.task_time + round.task_sleep_time
         round_n += 1
         if incomplete is True:
-            self.log.info("Task: incomplete round #{}: operations = {}; failures = {}; "
-                          "start_time = '{}'; end_time = '{}'; task_time = '{}';"
-                          .format(round_n, self.handler_stats.get_operation_count(),
-                                           self.round_retries,
-                                           datetime.fromtimestamp(self.task_start_time),
-                                           datetime.now(),
-                                           timedelta(seconds=self.total_time+(time() - self.task_start_time))))
+            task_time = timedelta(seconds=self.total_time+(time() - self.task_start_time))
+            sleep_time = timedelta(seconds=(time() - self.task_sleep_start))
+            self.log.info(f"Task: incomplete round #{round_n}: "
+                          f"operations = {self.handler_stats.get_operation_count()}; "
+                          f"failures = {self.round_retries}; "
+                          f"start_time = '{datetime.fromtimestamp(self.task_start_time)}'; "
+                          f"end_time = '{datetime.now()}'; "
+                          f"task_time = '{task_time}';")
+            total_operations += self.handler_stats.get_operation_count()
+            total_failures += self.round_retries
+            total_task_time += task_time
+            total_sleep_time += sleep_time
+            total_job_time += task_time + sleep_time
+
+        # finally, print job grand totals:
+        self.log.info(f"Job: activity totals: "
+                      f"total_rounds = {round_n}; "
+                      f"total_operations = {total_operations}; "
+                      f"total_failures = {total_failures}; "
+                      f"total_task_time = {total_task_time}; "
+                      f"total_sleep_time = {total_sleep_time}; "
+                      f"total_job_time = {total_job_time};")
+
+        if incomplete is True:
             self.log.info("Task: interrupted.")
         else:
             self.log.info("Task: finished.")
@@ -360,9 +419,8 @@ class ApplicationHandlerStats:
         self.operation_failures = 0
 
 
-
 class RoundExecutorStats:
-    round = namedtuple('Round', ['operations', 'failures', 'start_time', 'end_time', 'task_time'])
+    round = namedtuple('Round', ['operations', 'failures', 'start_time', 'end_time', 'task_time', 'task_sleep_time'])
 
     def __init__(self):
         self.rounds = list()

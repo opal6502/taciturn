@@ -15,9 +15,10 @@
 # along with Tactiurn.  If not, see <https://www.gnu.org/licenses/>.
 
 
-from taciturn.applications.base import (
-    BaseApplicationHandler,
-    AppUnexpectedStateException,
+from taciturn.applications.base import AppUnexpectedStateException
+
+from taciturn.applications.login import (
+    LoginApplicationHandler,
     AppEndOfListException,
     AppUserPrivilegeSuspendedException
 )
@@ -39,13 +40,13 @@ from datetime import datetime
 from time import time
 
 
-class FollowerApplicationHandler(BaseApplicationHandler):
+class FollowerApplicationHandler(LoginApplicationHandler):
     button_text_following = None
     button_text_not_following = None
 
     flist_prefix_xpath = None
 
-    def __init__(self, app_account, handler_stats, driver=None):
+    def __init__(self, app_account, handler_stats=None, driver=None):
         super().__init__(app_account, handler_stats, driver)
 
         config_name = 'app:'+self.application_name
@@ -282,7 +283,7 @@ class FollowerApplicationHandler(BaseApplicationHandler):
         self.stats.reset_failure_count()
 
         while quota is None or self.stats.get_operation_count() < quota:
-            self.scrollto_element(flist_entry, y_offset=header_overlap_y)
+            self.element_scroll_to(flist_entry, y_offset=header_overlap_y)
 
             if self.flist_is_empty(flist_entry):
                 raise AppEndOfListException("List end encountered, stopping.")
@@ -411,7 +412,7 @@ class FollowerApplicationHandler(BaseApplicationHandler):
         self.goto_following_page()
 
         follow_back_hiatus = follow_back_hiatus or self.follow_back_hiatus
-        mutual_expire_hiatus = follow_back_hiatus or self.mutual_expire_hiatus
+        mutual_expire_hiatus = mutual_expire_hiatus or self.mutual_expire_hiatus
 
         header_overlap_y = self.flist_header_overlap_y()
         flist_entry = self.flist_first_from_following()
@@ -419,7 +420,7 @@ class FollowerApplicationHandler(BaseApplicationHandler):
         self.stats.reset_failure_count()
 
         while quota is None or self.stats.get_operation_count() < quota:
-            self.scrollto_element(flist_entry, y_offset=header_overlap_y)
+            self.element_scroll_to(flist_entry, y_offset=header_overlap_y)
 
             # twitter end-of-list detection:
             if self.flist_is_empty(flist_entry):
@@ -480,9 +481,9 @@ class FollowerApplicationHandler(BaseApplicationHandler):
                 else:
                     AppUnexpectedStateException("Unfollow in unexpected state, please examine!")
 
-                # check for follow/unfollow limit popover ...
+                # check for follow/unfollow limit popover from last action ...
                 if self.flist_is_action_limit_notice():
-                    raise AppUserPrivilegeSuspendedException("Following limit encountered, stopping.")
+                    raise AppUserPrivilegeSuspendedException("Unfollow limit encountered, stopping.")
 
                 self.last_action_pause()
                 self.flist_button(flist_entry).click()
@@ -521,7 +522,7 @@ class FollowerApplicationHandler(BaseApplicationHandler):
             if self.flist_is_empty(flist_entry):
                 raise AppEndOfListException("List end encountered, stopping.")
 
-            self.scrollto_element(flist_entry)
+            self.element_scroll_to(flist_entry)
 
             flist_username = self.flist_username(flist_entry)
             flist_following_row = self.db_get_following(flist_username)
@@ -550,7 +551,7 @@ class FollowerApplicationHandler(BaseApplicationHandler):
             if self.flist_is_empty(flist_entry):
                 raise AppEndOfListException("List end encountered, stopping.")
 
-            self.scrollto_element(flist_entry)
+            self.element_scroll_to(flist_entry)
 
             flist_username = self.flist_username(flist_entry)
             flist_follower_row = self.db_get_follower(flist_username)

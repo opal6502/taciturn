@@ -66,9 +66,9 @@ class InstagramHandler(FollowerApplicationHandler):
     _flist_lighbox_prefix = '//div[@role="presentation"]/div[@role="dialog"]'
     flist_prefix_xpath = _flist_lighbox_prefix + '/div/div[2]/ul/div/li[{}]'
 
-    def __init__(self, app_account, driver=None):
-        super().__init__(app_account, driver)
-        self.log.info('Starting instagram app handler.')
+    def __init__(self, app_account, handler_stats, driver=None):
+        super().__init__(app_account, handler_stats, driver)
+        self.log.info('Starting Instagram app handler.')
 
     def login(self):
         login_optional_wait_args = dict(ignored_exceptions=[StaleElementReferenceException, TimeoutException],
@@ -308,12 +308,7 @@ class InstagramHandler(FollowerApplicationHandler):
     def flist_header_overlap_y(self):
         locator = (By.XPATH, self._flist_lighbox_prefix + '/div/div[2]')
         element = self.new_wait().until(EC.presence_of_element_located(locator))
-        offset_script = """
-        var rect = arguments[0].getBoundingClientRect();
-        return rect.top;
-        """
-        interior_top = self.driver.execute_script(offset_script, element)
-        return int(interior_top)
+        return self.element_rect_top(element)
 
     def flist_is_blocked_notice(self):
         return False
@@ -365,7 +360,7 @@ class InstagramHandler(FollowerApplicationHandler):
                 try:
                     follower_entry = self.e.follower_entry_n(follower_entry_n)
                     # follower_entry = self.e.follower_entry_n(follower_entry_n)
-                    self.scrollto_element(follower_entry, offset=followers_list_offset)
+                    self.element_scroll_to(follower_entry, offset=followers_list_offset)
                     entry_username = self.e.follower_username(follower_entry).text
 
                     entry_button = self.e.follower_button(follower_entry)
@@ -539,7 +534,7 @@ class InstagramHandler(FollowerApplicationHandler):
                 follower_entry = WebDriverWait(self.driver, 60*3)\
                     .until(lambda x: self.e.follower_entry_n(follower_entry_n))
                 # follower_entry = self.e.follower_entry_n(follower_entry_n)
-                self.scrollto_element(follower_entry, offset=followers_list_offset)
+                self.element_scroll_to(follower_entry, offset=followers_list_offset)
                 entry_username = self.e.follower_username(follower_entry).text
                 print("update_followers: entry_username =", entry_username)
 
@@ -552,7 +547,7 @@ class InstagramHandler(FollowerApplicationHandler):
                 continue
 
             # check to see if entry is in the database:
-            self.scrollto_element(follower_entry)
+            self.element_scroll_to(follower_entry)
             follower_username = self.e.follower_username(follower_entry).text
             print("Scanning {} ...".format(follower_username))
 
@@ -628,7 +623,7 @@ class InstagramHandler(FollowerApplicationHandler):
                     print("start_unfollow: follower_entry_n(unfollow_entry_n)")
                     unfollow_entry = self.e.follower_entry_n(unfollow_entry_n)
                     print("start_unfollow: scrollto_element(unfollow_entry, offset=followers_list_offset)")
-                    self.scrollto_element(unfollow_entry, offset=followers_list_offset)
+                    self.element_scroll_to(unfollow_entry, offset=followers_list_offset)
                     print("start_unfollow: follower_username(unfollow_entry).text")
                     unfollow_username = self.e.follower_username(unfollow_entry).text
 
@@ -773,7 +768,7 @@ class InstagramHandler(FollowerApplicationHandler):
                 follower_entry = WebDriverWait(self.driver, 60*3)\
                     .until(lambda x: self.e.follower_entry_n(follower_entry_n))
                 # follower_entry = self.e.follower_entry_n(follower_entry_n)
-                self.scrollto_element(follower_entry, offset=followers_list_offset)
+                self.element_scroll_to(follower_entry, offset=followers_list_offset)
                 entry_username = self.e.follower_username(follower_entry).text
                 print("update_followers: entry_username =", entry_username)
 
@@ -786,7 +781,7 @@ class InstagramHandler(FollowerApplicationHandler):
                 continue
 
             # check to see if entry is in the database:
-            self.scrollto_element(follower_entry)
+            self.element_scroll_to(follower_entry)
             follower_username = self.e.follower_username(follower_entry).text
             print("Scanning {} ...".format(follower_username))
 
@@ -858,7 +853,7 @@ class InstagramHandler(FollowerApplicationHandler):
                 self.driver.implicitly_wait(0)
                 expand_button = self.driver.find_element(
                     By.XPATH, '//button/span[contains(@class, "createSpriteExpand") and text()="Expand"]')
-                self.scrollto_element(expand_button)
+                self.element_scroll_to(expand_button)
                 expand_button.click()
             except NoSuchElementException as e:
                 print("Exception (2): ", e)

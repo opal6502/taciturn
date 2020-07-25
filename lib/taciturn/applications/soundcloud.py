@@ -21,12 +21,8 @@ from selenium.common.exceptions import TimeoutException, NoSuchElementException,
 
 from sqlalchemy import and_
 
-from taciturn.applications.base import (
-    FollowerApplicationHandler,
-    ApplicationWebElements,
-    AppLoginException,
-    AppUnexpectedStateException
-)
+from taciturn.applications.base import AppUnexpectedStateException
+from taciturn.applications.follower import FollowerApplicationHandler
 
 from taciturn.db.followers import (
     Follower,
@@ -39,14 +35,11 @@ from taciturn.db.base import (
     Application,
 )
 
+from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import NoSuchElementException
 
 from datetime import datetime
 from time import sleep
-import os
-
-BUTTON_TEXT_NOT_FOLLOWING = ('Follow',)
-BUTTON_TEXT_FOLLOWING = ('Following',)
 
 
 class SoundcloudHandler(FollowerApplicationHandler):
@@ -54,178 +47,239 @@ class SoundcloudHandler(FollowerApplicationHandler):
 
     application_url = "https://soundcloud.com"
     application_login_url = application_url
+    google_login_url = 'https://accounts.google.com/Login'
 
     application_asset_dirname = 'soundcloud'
-    # default_profile_image = 'default-profile-pic.jpg'
+    default_profile_image = 'avatars-default-500x500.jpg'
 
-    # user_agent = 'Mozilla/5.0 (iPad; CPU OS 12_2 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148'
+    button_text_following = ('Following',)
+    button_text_not_following = ('Follow',)
 
-    def __init__(self, options, db_session, app_account, driver=None, elements=None):
-        super().__init__(options, db_session, app_account, driver, SoundcloudHandlerWebElements)
+    def __init__(self, app_account, driver=None):
+        super().__init__(app_account, driver)
+        self.log.info('Starting Soundcloud app handler.')
 
-        self.follow_back_hiatus = self.config['app:soundcloud']['follow_back_hiatus']
-        self.unfollow_hiatus = self.config['app:soundcloud']['unfollow_hiatus']
-        self.action_timeout = self.config['app:soundcloud']['action_timeout']
-        self.mutual_expire_hiatus = self.config['app:soundcloud']['mutual_expire_hiatus']
-
-        if self.options.driver is not None:
-            if self.options.driver[0].endswith('_headless'):
-                self.headless_mode = True
-            else:
-                self.headless_mode = False
-        elif self.config['selenium_webdriver'].endswith('_headless'):
+        # login process is different in headed/headless mode:
+        driver_name = self.options.driver[0] if self.options.driver else self.config['selenium_webdriver']
+        if driver_name.endswith('_headless'):
             self.headless_mode = True
         else:
             self.headless_mode = False
 
-        self.init_webdriver()
+    def login(self):
+        if self.headless_mode:
+            self._google_login_headless_mode()
+        else:
+            self._google_login_headed_mode()
+        self._google_login_soundcloud_submit()
+        self._close_if_pro_lightbox()
 
-        if options.cookies:
-            self.load_cookies(options.cookies[0])
+        # use the 'Messages' element to verify login!
+        messages_element_verify_locator = (By.XPATH, '//*[@id="app"]/header'
+                                                     '/div/div[3]/div[2]/a[3]/div/span[contains(.,"Messages")]')
+        self.new_wait().until(EC.presence_of_element_located(messages_element_verify_locator))
 
-        # self.goto_homepage()
+        self.log.info("Logged in.")
+
+    def _google_login_headless_mode(self):
+        login_wait = self.new_wait(timeout=10)
+        self.log.info("Logging in to Soundcloud through Google, headless browser mode.")
+        self.driver.get(self.google_login_url)
+
+        google_login_email_locator = (By.CSS_SELECTOR, '#Email')
+        google_login_next_locator = (By.CSS_SELECTOR, '#next')
+        google_login_password_locator = (By.CSS_SELECTOR, '#password')
+        google_login_submit_locator = (By.CSS_SELECTOR, '#submit')
+
+        login_wait.until(EC.element_to_be_clickable(google_login_email_locator))\
+            .send_keys(self.app_account.name)
+        login_wait.until(EC.element_to_be_clickable(google_login_next_locator))\
+            .click()
+        login_wait.until(EC.element_to_be_clickable(google_login_password_locator))\
+            .send_keys(self.app_account.password)
+        login_wait.until(EC.element_to_be_clickable(google_login_submit_locator))\
+            .click()
+
+    def _google_login_headed_mode(self):
+        login_wait = self.new_wait(timeout=10)
+        self.log.info("Logging in to Soundcloud through Google, headed browser mode.")
+        self.driver.get(self.google_login_url)
+
+        google_name_field_locator = (By.XPATH, '//input[@id="identifierId"]')
+        google_id_next_button_locator = (By.XPATH, '//*[@id="identifierNext"]//button')
+        google_password_field_locator = (By.XPATH, '//input[@name="password"]')
+        google_pw_next_button_locator = (By.XPATH, '//*[@id="passwordNext"]//button')
+
+        login_wait.until(EC.element_to_be_clickable(google_name_field_locator))\
+            .send_keys(self.app_account.name)
+        login_wait.until(EC.element_to_be_clickable(google_id_next_button_locator))\
+            .click()
+        login_wait.until(EC.element_to_be_clickable(google_password_field_locator))\
+            .send_keys(self.app_account.password)
+        login_wait.until(EC.element_to_be_clickable(google_pw_next_button_locator))\
+            .click()
+
+    def _google_login_soundcloud_submit(self):
+        login_wait = self.new_wait(timeout=10)
+        self.goto_homepage()
+
+        alternate_login_button_locator = (By.CSS_SELECTOR, 'button.frontHero__loginButton:first-child')
+        login_wait.until(EC.element_to_be_clickable(alternate_login_button_locator)) \
+            .click()
+
+        # switch to alternative login iframe:
+        login_iframe_locator = (By.XPATH, '//iframe[@class="webAuthContainer__iframe"]')
+        login_iframe_element = login_wait.until(EC.presence_of_element_located(login_iframe_locator))
+        self.driver.switch_to.frame(login_iframe_element)
+
+        # click google sign-in button:
+        sc_google_login_button_locator = (By.CSS_SELECTOR, 'button.google-plus-signin')
+        self.new_wait().until(EC.element_to_be_clickable(sc_google_login_button_locator)) \
+            .click()
+
+        # switch back from iframe:
+        self.driver.switch_to.default_content()
+
+    def _close_if_pro_lightbox(self):
+        lb_wait = self.new_wait(timeout=5)
+        try_pro_h1_locator = (By.XPATH, '/html/body/div/div/div/div/div[2]/h1')
+        try_pro_xbutton_locator = (By.XPATH, '/html/body/div/a')
+        try:
+            try_pro_h1_element = lb_wait.until(EC.presence_of_element_located(try_pro_h1_locator))
+            if try_pro_h1_element.text == 'TRY PRO RISK-FREE':
+                try_pro_xbutton_element = lb_wait.until(EC.element_to_be_clickable(try_pro_xbutton_locator))
+                if try_pro_xbutton_element.get_attribute('href') == 'javascript:appboyBridge.closeMessage()':
+                    try_pro_xbutton_element.click()
+        except TimeoutException:
+            pass
 
     def goto_homepage(self):
         self.driver.get(self.application_url)
 
-    def goto_user_page(self):
+    def goto_profile_page(self, user_name=None):
         # navigate using the ui ... to accommodate google user email login ;)
-        header_profile_menu = self.e.header_profile_menu()
-        self.scrollto_element(header_profile_menu)
-
-        with open(self.screenshots_dir+'/soundcloud_page_last.html', 'w') as gh:
-            gh.write(self.driver.page_source)
-        self.driver.save_screenshot(os.path.join(self.screenshots_dir, 'soundcloud_image_last.png'))
-
-        header_profile_menu.click()
-        self.e.header_profile_menu_profile_link().click()
-
-    def goto_following_page(self):
-        self.goto_user_page()
-        followers_link = self.e.profile_following_link()
-        followers_link.click()
-
-    def goto_followers_page(self):
-        self.goto_user_page()
-        followers_link = self.e.profile_followers_link()
-        followers_link.click()
-
-    def login(self):
-        if self.headless_mode:
-            self._login_headless_mode()
+        if user_name is None:
+            header_profile_menu_locator = (By.XPATH, '//*[@id="app"]/header/div/div[3]/div[2]/a[1]/div[2]/div/span')
+            header_profile_menu_profile_link_locator = (By.XPATH, '//*[starts-with(@id,"dropdown-button-")]'
+                                                                  '/div/ul[1]/li[1]/a[text()="Profile"]')
+            header_profile_menu_element = self.new_wait()\
+                .until(EC.presence_of_element_located(header_profile_menu_locator))
+            self.element_scroll_to(header_profile_menu_element)
+            header_profile_menu_element.click()
+            self.new_wait().until(EC.presence_of_element_located(header_profile_menu_profile_link_locator))\
+                .click()
         else:
-            self._login_head_mode()
+            self.driver.get(f'{self.application_url}/{user_name}')
 
-    def _login_headless_mode(self):
-        self.driver.get('https://accounts.google.com/Login')
+    def goto_following_page(self, user_name=None):
+        if user_name is None:
+            self.goto_profile_page()
+            profile_following_link_locator = (By.XPATH, '//*[@id="content"]/div/div[4]/div[2]/div/article[1]'
+                                                        '/table/tbody/tr/td[2]/a/h3[text()="Following"]')
+            self.new_wait().until(EC.presence_of_element_located(profile_following_link_locator))\
+                .click()
+        else:
+            self.driver.get(f'{self.application_url}/{user_name}/following')
 
-        print('Loggin in through google ...')
+    def goto_followers_page(self, user_name=None):
+        if user_name is None:
+            self.goto_profile_page()
+            profile_followers_link_locator = (By.XPATH, '//*[@id="content"]/div/div[4]/div[2]/div/article[1]'
+                                                        '/table/tbody/tr/td[1]/a/h3[text()="Followers"]')
+            self.new_wait().until(EC.presence_of_element_located(profile_followers_link_locator))\
+                .click()
+        else:
+            self.driver.get(f'{self.application_url}/{user_name}/followers')
 
-        self.driver.find_element_by_id("Email").send_keys(self.app_account.name)
-        self.driver.find_element_by_id("next").click()
-        self.driver.find_element_by_id("password").send_keys(self.app_account.password)
-        self.driver.find_element_by_id("submit").click()
+    def has_unfollow_confirm(self):
+        return False
 
-        print('Signing into soundcloud ...')
+    def unfollow_confirm_button(self):
+        return False
 
-        # goto soundcloud main page:
-        self.goto_homepage()
+    # new flist methods:
 
-        print('Clicking login ...')
+    def _flist_first_from_either(self):
+        sleep(5)
+        locator = (By.XPATH, '//*[@id="content"]/div/div/div[2]/div/div/ul/li[contains(@class, "badgeList__item")][1]')
+        return self.new_wait().until(EC.presence_of_element_located(locator))
 
-        # click on login:
-        sign_in_button = self.driver.find_element(
-            By.CSS_SELECTOR, r'button.frontHero__loginButton:first-child')
-        sign_in_button.click()
+    def flist_first_from_following(self):
+        super().flist_first_from_following()
+        return self._flist_first_from_either()
 
-        # switch to login iframe:
-        login_iframe = self.driver.find_element(By.XPATH, '//iframe[@class="webAuthContainer__iframe"]')
-        self.driver.switch_to.frame(login_iframe)
+    def flist_first_from_followers(self):
+        super().flist_first_from_followers()
+        return self._flist_first_from_either()
 
-        print('Clicking google sign in ...')
+    def flist_next(self, flist_entry):
+        super().flist_next(None)
+        sleep(0.1)
+        locator = (By.XPATH, './following-sibling::li[1]')
+        return self.new_wait(flist_entry).until(EC.presence_of_element_located(locator))
+        
+    def flist_is_last(self, flist_entry):
+        locator = (By.XPATH, '//*[@id="content"]/div/div/div[2]/div/div/ul'
+                             '/li[contains(@class, "badgeList__item")][last()]')
+        last_entry = self.new_wait().until(EC.presence_of_element_located(locator))
+        return flist_entry == last_entry
+        
+    def flist_is_empty(self, flist_entry):
+        return False
 
-        with open(self.screenshots_dir+'/soundcloud_page_last.html', 'w') as gh:
-            gh.write(self.driver.page_source)
-        self.driver.save_screenshot(os.path.join(self.screenshots_dir, 'soundcloud_image_last.png'))
+    def flist_username(self, flist_entry):
+        locator = (By.XPATH, './div/div[2]/a')
+        return self.new_wait(flist_entry).until(EC.presence_of_element_located(locator))\
+                        .get_attribute('href').rsplit('/', 1)[-1]
 
-        # click google sign-in button:
-        user_google_button = self.driver.find_element(
-            By.CSS_SELECTOR, r'button.google-plus-signin')
-        user_google_button.click()
+    def flist_image_is_default(self, flist_entry):
+        locator = (By.XPATH, './div/div[1]/a/div/span')
+        image_css_value = self.new_wait(flist_entry).until(EC.presence_of_element_located(locator))\
+                                .value_of_css_property('background-image')
+        if image_css_value.startswith('url("https://'):
+            image_url = image_css_value[5:-2]
+            return self.is_default_image(image_url)
+        else:
+            return True
 
-        self.driver.switch_to.default_content()
+    def flist_is_verified(self, flist_entry):
+        return False
 
-        # use the 'Messages' element to verify login!
-        # //*[@id="app"]/header/div/div[3]/div[2]/a[3]/div/span[contains(.,"Messages")]
-        self.driver.find_element(
-            By.XPATH, r'//*[@id="app"]/header/div/div[3]/div[2]/a[3]/div/span[contains(.,"Messages")]')
+    def flist_button(self, flist_entry):
+        locator = (By.XPATH, './div/div[3]/button')
+        button_element = self.new_wait(flist_entry).until(EC.presence_of_element_located(locator))
+        ActionChains(self.driver).move_to_element(button_element).perform()
+        return button_element
+    
+    def flist_button_text(self, flist_entry):
+        return self.flist_button(flist_entry).text
 
-        print("Logged in!")
+    def flist_header_overlap_y(self):
+        header_element_locator = (By.XPATH, '//*[@id="content"]/div/div/div[1]')
+        header_element = self.new_wait().until(EC.presence_of_element_located(header_element_locator))
+        return self.element_rect_bottom(header_element)
 
-        self.e.close_if_pro_lightbox()
+    def flist_is_action_limit_notice(self):
+        blocked_overlay_locator = (By.XPATH, '//*[starts-with(@id, "overlay_")]/div/div/div/p[2]')
+        blocked_message_locator = (By.XPATH, '//*[starts-with(@id, "overlay_")]/div/div/div/p[5]')
+        blocked_text = 'We have temporarily blocked'
+        try:
+            self.driver.find_element(*blocked_overlay_locator)
+            blocked_text = self.driver.find_element(*blocked_message_locator).text
+            if blocked_text.startswith(blocked_text):
+                return True
+            else:
+                raise AppUnexpectedStateException(f"Got unexpected text from blocked notice: '{blocked_text}'")
+        except (StaleElementReferenceException, TimeoutException, NoSuchElementException):
+            return False
 
-    def _login_head_mode(self):
-        # go to google login first ...
-        print("Non-headless login mode!")
-        print('Loggin in through google ...')
+    def flist_is_blocked_notice(self):
+        return False
 
-        self.driver.get('https://accounts.google.com/Login')
 
-        print('Loggin in through google ...')
+    # old methods:
 
-        # dump google login to html:
-        with open(self.screenshots_dir+'/google_login_last.html', 'w') as gh:
-            gh.write(self.driver.page_source)
-
-        google_name_field = self.driver.find_element(By.XPATH, '//input[@id="identifierId"]')
-        google_name_field.send_keys(self.app_account.name)
-
-        # click 'Next' button:
-        # //*[@id="identifierNext"]/div/span/span[text() = "Next"]
-        google_next_button = self.driver.find_element(
-            By.XPATH, '//*[@id="identifierNext"]//button')
-        google_next_button.click()
-
-        # enter password:
-        # //input[@name="password"]
-        google_password_field = self.driver.find_element(By.XPATH, '//input[@name="password"]')
-        google_password_field.send_keys(self.app_account.password)
-
-        # click the 'Next' button:
-        # //*[@id="passwordNext"]/div/span/span[text() = "Next"]
-        google_next_button = self.driver.find_element(
-            By.XPATH, '//*[@id="passwordNext"]//button')
-        google_next_button.click()
-
-        # goto soundcloud main page:
-        self.goto_homepage()
-
-        # click on login:
-        sign_in_button = self.driver.find_element(
-            By.CSS_SELECTOR, r'button.frontHero__loginButton:first-child')
-        sign_in_button.click()
-
-        # switch to login iframe:
-        login_iframe = self.driver.find_element(By.XPATH, '//iframe[@class="webAuthContainer__iframe"]')
-        self.driver.switch_to.frame(login_iframe)
-
-        # click google sign-in button:
-        user_google_button = self.driver.find_element(
-            By.CSS_SELECTOR, r'button.google-plus-signin')
-        user_google_button.click()
-
-        self.driver.switch_to.default_content()
-
-        # use the 'Messages' element to verify login!
-        # //*[@id="app"]/header/div/div[3]/div[2]/a[3]/div/span[contains(.,"Messages")]
-        self.driver.find_element(
-            By.XPATH, r'//*[@id="app"]/header/div/div[3]/div[2]/a[3]/div/span[contains(.,"Messages")]')
-
-        print("Logged in!")
-
-        self.e.close_if_pro_lightbox()
-
-    def start_following(self, target_account, quota=None, unfollow_hiatus=None):
+    def __start_following(self, target_account, quota=None, unfollow_hiatus=None):
         self.driver.get(self.application_url+'/'+target_account+'/followers')
 
         # scan the header menu overhang:
@@ -235,7 +289,7 @@ class SoundcloudHandler(FollowerApplicationHandler):
         followed_count = 0
 
         while quota is None or followed_count < quota:
-            self.scrollto_element(follower_entry, offset=header_menu_offset)
+            self.element_scroll_to(follower_entry, offset=header_menu_offset)
 
             entry_username = self.e.follower_username(follower_entry)
 
@@ -363,7 +417,7 @@ class SoundcloudHandler(FollowerApplicationHandler):
 
         return followed_count
 
-    def start_unfollowing(self, quota=None, follow_back_hiatus=None, mutual_expire_hiatus=None):
+    def __start_unfollowing(self, quota=None, follow_back_hiatus=None, mutual_expire_hiatus=None):
         # print(" GET {}/{}/following".format(self.application_url, self.app_username))
         self.goto_following_page()
         sleep(5)
@@ -376,7 +430,7 @@ class SoundcloudHandler(FollowerApplicationHandler):
         header_menu_offset = self.e.followers_header_overlap()
 
         while quota is None or quota > unfollow_count:
-            self.scrollto_element(following_entry, offset=header_menu_offset)
+            self.element_scroll_to(following_entry, offset=header_menu_offset)
             sleep(0.1)
 
             following_username = self.e.follower_username(following_entry)
@@ -470,7 +524,7 @@ class SoundcloudHandler(FollowerApplicationHandler):
                 return unfollow_count
             following_entry = self.e.next_follower_entry(following_entry)
 
-    def update_following(self):
+    def __update_following(self):
         self.goto_following_page()
 
         header_menu_offset = self.e.followers_header_overlap()
@@ -480,7 +534,7 @@ class SoundcloudHandler(FollowerApplicationHandler):
 
         while True:
             # check to see if entry is in the database:
-            self.scrollto_element(follower_entry)
+            self.element_scroll_to(follower_entry)
             follower_username = self.e.follower_username(follower_entry)
             print("Scanning {} ...".format(follower_username))
 
@@ -510,7 +564,7 @@ class SoundcloudHandler(FollowerApplicationHandler):
             follower_entry = self.e.next_follower_entry(follower_entry)
             sleep(0.4)
 
-    def update_followers(self):
+    def __update_followers(self):
         self.goto_followers_page()
 
         header_menu_offset = self.e.followers_header_overlap()
@@ -519,7 +573,7 @@ class SoundcloudHandler(FollowerApplicationHandler):
         entries_added = 0
 
         while True:
-            self.scrollto_element(follower_entry, offset=header_menu_offset)
+            self.element_scroll_to(follower_entry, offset=header_menu_offset)
 
             entry_username = self.e.follower_username(follower_entry)
 
@@ -550,7 +604,7 @@ class SoundcloudHandler(FollowerApplicationHandler):
             sleep(0.4)
 
 
-class SoundcloudHandlerWebElements(ApplicationWebElements):
+class SoundcloudHandlerWebElements():
 
     def header_profile_menu(self):
         return self.driver.find_element(

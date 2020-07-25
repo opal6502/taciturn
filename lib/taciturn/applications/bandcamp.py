@@ -14,153 +14,42 @@
 # You should have received a copy of the GNU General Public License
 # along with Tactiurn.  If not, see <https://www.gnu.org/licenses/>.
 
-from selenium.common.exceptions import (
-    TimeoutException,
-    NoSuchElementException,
-    StaleElementReferenceException,
-    UnexpectedAlertPresentException
-)
-
+from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 
-from taciturn.applications.base import (
-    BaseApplicationHandler,
-    ApplicationWebElements,
-    AppDataAnchorMissingException
-)
-
-from collections import namedtuple
-import os
-
-# named tuple to hold data about a bandcamp track:
-BandcampTrackData = namedtuple('BandcampTrackData', ['url', 'title', 'artist', 'album', 'label', 'img_local'])
-
-# it's important to order these tags by priority so that when twitter truncates the list, the best possible combo
-# is still present, and 30 max for facebook, not sure about instagram:
-GENRE_TAGS = {
-    'idm': ['#music', '#bandcamp', '#radio', '#electronicmusic', '#electronic', '#idm', '#synthesizer', '#synth',
-            '#breakbeat', '#drummachine', '#acid', '#beats', '#song', '#artist', '#dance', '#intelligent',
-            '#musicproducer', '#producer', '#musician', '#art',  '#nowplaying', '#musicstreaming', '#musiclover',
-            '#love', '#like', '#follow', '#life', '#friends', '#goodmusic', '#indie'],
-    'techno': ['#music', '#bandcamp', '#radio', '#electronicmusic', '#electronic', '#techno', '#synthesizer', '#synth',
-            '#breakbeat', '#drummachine', '#acid', '#beats', '#song', '#artist', '#dance', '#party',
-            '#musicproducer', '#producer', '#musician', '#art',  '#nowplaying', '#musicstreaming', '#musiclover',
-            '#love', '#like', '#follow', '#life', '#friends', '#goodmusic', '#indie'],
-    'ambient': ['#music', '#bandcamp', '#radio', '#electronicmusic', '#electronic', '#ambient', '#synthesizer', '#synth',
-            '#modular', '#atmosphere', '#mood', '#song', '#artist', '#drone', '#soundscape', '#soft',
-            '#musicproducer', '#producer', '#musician', '#art',  '#nowplaying', '#musicstreaming', '#musiclover',
-            '#love', '#like', '#follow', '#life', '#friends', '#goodmusic', '#indie'],
-    'industrial': ['#music', '#bandcamp', '#radio', '#industrialmusic', '#industrial', '#electronic', '#synthesizer',
-            '#synth', '#ebm', '#guitar', '#metal', '#distortion', '#song', '#artist', '#dance', '#party',
-            '#musicproducer', '#producer', '#musician', '#art',  '#nowplaying', '#musicstreaming', '#musiclover',
-            '#love', '#like', '#follow', '#life', '#friends', '#goodmusic', '#indie'],
-    'experimental': ['#music', '#bandcamp', '#radio', '#experimentalmusic', '#experimental', '#electronic', '#synthesizer',
-            '#tape', '#samples', '#foundsound', '#noise', '#atmosphere', '#song', '#artist', '#intelligent', '#sfx',
-            '#musicproducer', '#producer', '#musician', '#art', '#nowplaying', '#musicstreaming', '#musiclover',
-            '#love', '#like', '#follow', '#life', '#friends', '#goodmusic', '#indie'],
-    'rock': ['#music', '#bandcamp', '#radio', '#rockmusic', '#rock', '#alternative', '#guitar',
-            '#classicrock', '#indie', '#foundsound', '#noise', '#atmosphere', '#song', '#artist', '#rocknroll',
-             '#guitar', '#rockband', '#producer', '#musician', '#art', '#nowplaying', '#musicstreaming', '#musiclover',
-            '#love', '#like', '#follow', '#life', '#friends', '#goodmusic', '#indie'],
-    'metal': ['#music', '#bandcamp', '#radio', '#metalmusic', '#metal', '#metalband', '#technicaldeathmetal',
-             '#techdeath', '#deathcore', '#doommetal', '#death', '#metalheads', '#thrashmetal', '#thrash', '#blackmetal',
-             '#extrememetal', '#guitar', '#band', '#musician', '#art', '#nowplaying', '#musicstreaming', '#musiclover',
-             '#love', '#like', '#follow', '#life', '#friends', '#goodmusic', '#indie'],
-}
+from taciturn.applications.music import MusicScrapingHandler
 
 
-class BandcampHandler(BaseApplicationHandler):
+class BandcampHandler(MusicScrapingHandler):
     application_name = 'bandcamp'
-
     application_url = "https://bandcamp.com"
-    application_login_url = "https://bandcamp.com/login"
 
-    def __init__(self, options, db_session, app_account, driver=None):
-        super().__init__(options, db_session, app_account, driver)
+    def music_scrape_artist(self):
+        locator = (By.XPATH, '//*[@id="name-section"]/h3/span[@itemprop="byArtist"]/a')
+        return self.new_wait().until(EC.presence_of_element_located(locator)).text
 
-    def login(self):
-        raise NotImplementedError("Why would you need this, anyway?")
+    def music_scrape_title(self):
+        locator = (By.XPATH, '//*[@id="name-section"]/h2[@class="trackTitle"]')
+        return self.new_wait().until(EC.presence_of_element_located(locator)).text
 
-    def parse_track_from_page(self, track_url):
-        self.driver.get(track_url)
-        track_title = self.e.track_title()
-        track_artist = self.e.track_artist()
-        track_album = self.e.track_album()
-        # track_label = self.e.track_label()  -- not sure about this one?
-
-        # get the large image:
-        track_img_small = self.e.track_img_small()
-        track_img_small.click()
-        track_img_large = self.e.track_img_large()
-        track_img_large_src = track_img_large.get_attribute('src')
-        track_img_large.click()
-
-        # download the image to bandcamp assets dir:
-        # we want something like this:  taciturn/assets/bandcamp/bandcamp-img-{sha256}.jpg
-        track_img_local = self.download_image(track_img_large_src, prefix='bandcamp-img-')
-        print("Downloaded album art: {}".format(track_img_local))
-
-        new_track_data = BandcampTrackData(
-            url=track_url,
-            title=track_title,
-            artist=track_artist,
-            album=track_album,
-            label=None,
-            img_local=track_img_local
-        )
-
-        print("parse_track_from_page: new_track_data =", new_track_data)
-
-        return new_track_data
-
-    # turns a BandcampTrackData entry to a string formatted like on bandcamp:
-    @staticmethod
-    def author_string(bandcamp_track_data):
-        if not isinstance(bandcamp_track_data, BandcampTrackData):
-            raise TypeError("Expected BandcampTrackData, got {}".format(type(bandcamp_track_data)))
-        
-        if bandcamp_track_data.album is not None:
-            track_str = (bandcamp_track_data.title+'\n'
-                         +'from '+bandcamp_track_data.album+' by '+bandcamp_track_data.artist)
-        else:
-            track_str = (bandcamp_track_data.title+'\n'
-                         +'by '+bandcamp_track_data.artist)
-        return track_str
-
-    @staticmethod
-    def genre_tags(genre):
-        return GENRE_TAGS[genre]
-
-    def goto_homepage(self):
-        self.driver.get(self.application_url)
-
-    def goto_user_page(self):
-        raise NotImplementedError
-
-
-class BandcampHandlerWebElements(ApplicationWebElements):
-    implicit_default_wait = 60
-
-    def track_title(self):
-        return self.driver.find_element(By.XPATH, '//*[@id="name-section"]/h2[@class="trackTitle"]').text
-
-    def track_artist(self):
-        return self.driver.find_element(By.XPATH, '//*[@id="name-section"]/h3/span[@itemprop="byArtist"]/a').text
-
-    def track_album(self):
-        # this may not be present!
+    def music_scrape_album(self):
+        locator = (By.XPATH, '//*[@id="name-section"]/h3/span[1]/a/span[@class="fromAlbum" and @itemprop="name"]')
         try:
-            self.driver.implicitly_wait(1)
-            return self.driver.find_element(
-                By.XPATH,
-                '//*[@id="name-section"]/h3/span[1]/a/span[@class="fromAlbum" and @itemprop="name"]').text
-        except NoSuchElementException:
+            return self.new_wait(timeout=2).until(EC.presence_of_element_located(locator)).text
+        except TimeoutError:
             return None
-        finally:
-            self.driver.implicitly_wait(self.implicit_default_wait)
 
-    def track_img_large(self):
-        return self.driver.find_element(By.XPATH, '//img[@id="popupimage_image"]')
+    def music_scrape_art_url(self):
+        small_image_locator = (By.XPATH, '//*[@id="tralbumArt"]/a/img')
+        large_image_locator = (By.XPATH, '//img[@id="popupimage_image"]')
 
-    def track_img_small(self):
-        return self.driver.find_element(By.XPATH, '//*[@id="tralbumArt"]/a/img')
+        self.new_wait().until(EC.element_to_be_clickable(small_image_locator))\
+            .click()
+
+        large_image_element = self.new_wait().until(EC.element_to_be_clickable(large_image_locator))
+        large_image_url = large_image_element.get_attribute('src')
+
+        large_image_element.click()
+
+        return large_image_url
+

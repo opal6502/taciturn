@@ -36,9 +36,9 @@ class TwitterHandler(FollowerApplicationHandler):
     button_text_following = ('Following', 'Pending', 'Cancel', 'Unfollow')
     button_text_not_following = ('Follow',)
 
-    def __init__(self, app_account, driver=None):
-        super().__init__(app_account, driver)
-        self.log.info('Starting twitter app handler.')
+    def __init__(self, app_account, handler_stats, driver=None):
+        super().__init__(app_account, handler_stats, driver)
+        self.log.info('Starting Twitter app handler.')
 
     def login(self):
         self.goto_login_page()
@@ -186,7 +186,7 @@ class TwitterHandler(FollowerApplicationHandler):
 
         submit_tweet_button_locator = (By.XPATH, '//div[@role="button"]//span[text()="Tweet"]')
         submit_tweet_button_element = post_wait.until(EC.presence_of_element_located(submit_tweet_button_locator))
-        self.scrollto_element(submit_tweet_button_element)
+        self.element_scroll_to(submit_tweet_button_element)
         submit_tweet_button_element.click()
 
         # wait for the lightbox (x) to dissapear, to verify tweet sent ...
@@ -236,7 +236,10 @@ class TwitterHandler(FollowerApplicationHandler):
                             effective_tweet_length += 23
                 else:
                     scan_position += 1
-                    effective_tweet_length += 1
+                    if self.is_twitter_single_char_value(tweet_text[scan_position]):
+                        effective_tweet_length += 1
+                    else:
+                        effective_tweet_length += 2
 
         # debug:
         self.log.debug("truncate_tweet: len(tweet_text) =", len(tweet_text))
@@ -251,6 +254,19 @@ class TwitterHandler(FollowerApplicationHandler):
             return tweet_text[:last_scanned_space]
         else:
             raise ValueError("Couldn't truncate body string for twitter!")
+
+    @staticmethod
+    def is_twitter_single_char_value(c):
+        # code ranges gotten from: https://developer.twitter.com/en/docs/basics/counting-characters
+        ord_c = ord(c)
+        if (0x0000 <= ord_c <= 0x10FF or
+            0x2000 <= ord_c <= 0x200D or
+            ord_c == 0x200E or
+            ord_c == 0x200F or
+            0x2010 <= ord_c <= 0x201F or
+            0x2032 <= ord_c <= 0x2037):
+            return True
+        return False
 
     def has_unfollow_confirm(self):
         return True
@@ -308,7 +324,8 @@ class TwitterHandler(FollowerApplicationHandler):
 
     def flist_image_is_default(self, flist_entry):
         locator = (By.XPATH, './div/div/div/div[1]/div/a/div[1]/div[2]/div/img')
-        image_src = self.new_wait(flist_entry).until(EC.presence_of_element_located(locator)).get_attribute('src')
+        image_src = self.new_wait(flist_entry, timeout=90)\
+            .until(EC.presence_of_element_located(locator)).get_attribute('src')
         return self.is_default_image(image_src)
 
     def flist_is_verified(self, flist_entry):

@@ -16,7 +16,6 @@
 
 # Taciturn site config!
 
-# setup:
 
 import os
 

@@ -17,12 +17,6 @@
 # this is the job used to automate RBGuy9000 posts!
 
 
-from selenium.common.exceptions import (
-    NoSuchElementException,
-    TimeoutException,
-    StaleElementReferenceException
-)
-
 from taciturn.job import TaciturnJob
 
 from taciturn.applications.bandcamp import BandcampHandler
@@ -32,44 +26,41 @@ from taciturn.applications.facebook import FacebookHandler
 from taciturn.applications.instagram import InstagramHandler
 from taciturn.applications.twitter import TwitterHandler
 
-from time import sleep
-import traceback
+import sys
 
 
 class RootBeerGuyJob(TaciturnJob):
-    __jobname__ = 'soundcloud_update_followers'
+    __jobname__ = 'rbg_bandcamp_post'
+    __appnames__ = ['bandcamp', 'facebook', 'instagram', 'twitter']
 
-    def init_job(self, options, config=None):
-        super().init_job(options, config)
+    def __init__(self):
+        super().__init__()
 
-        self.appnames = ['bandcamp', 'facebook', 'instagram', 'twitter']
-        self.accounts = dict()
+        self.username = self.options.user[0]
+        self.target_link = self.options.link[0]
+        self.genre = self.options.genre[0]
 
-        self.username = options.user[0]
         if self.username != 'rbg':
-            raise RuntimeError("This job is for user 'rbg' only!")
-
-        if self.options.link is None:
-            raise RuntimeError("You must provide a bandcamp link with the -l flag")
-        self.target_link = options.link[0]
+            self.log.critical("This job is for user 'rbg' only!")
+            sys.exit(1)
+        if self.target_link is None:
+            self.log.critical("You must provide a bandcamp link with the -l flag")
+            sys.exit(1)
+        if self.genre not in GENRE_TAGS:
+            self.log.critical(f"You must provide a genre with the -g flag, "
+                              f"choose one from: {', '.join(GENRE_TAGS.keys())}")
+            sys.exit(1)
 
         if self.options.genre is None or self.options.genre[0] not in GENRE_TAGS:
             raise RuntimeError("You must provide a genre with the -g flag, choose one from: {}"
                                .format(', '.join(GENRE_TAGS.keys())))
         self.genre = self.options.genre[0]
 
-        # pre-load accounts for all apps this job uses:
-        self.load_accounts()
-
-        self.stop_no_quota = options.stop
-
-        self.options = options
-
     def run(self):
         help_us_string = '𝕎𝕖 𝕣𝕖𝕒𝕝𝕝𝕪 𝕟𝕖𝕖𝕕 𝕪𝕠𝕦𝕣 𝕙𝕖𝕝𝕡! ☑️ 𝕝𝕚𝕜𝕖 ☑️ 𝕔𝕠𝕞𝕞𝕖𝕟𝕥 ☑️ 𝕤𝕙𝕒𝕣𝕖'
 
         bandcamp_account = self.get_account('bandcamp')
-        bandcamp_handler = BandcampHandler(self.options, self.session, bandcamp_account)
+        bandcamp_handler = BandcampHandler(bandcamp_account)
         # just share this first-initialized driver with all app handlers:
         shared_driver = bandcamp_handler.driver
 
@@ -95,15 +86,12 @@ class RootBeerGuyJob(TaciturnJob):
                                                         facebook_post_body)
 
         print("Made facebook post.")
-        # print("new page post link =", fb_post_link)
-
-        # then, create the twitter post:
 
         twitter_account = self.get_account('twitter')
-        twitter_handler = TwitterHandler(self.options, self.session, twitter_account, shared_driver)
+        twitter_handler = TwitterHandler(twitter_account, driver=shared_driver)
 
         twitter_post_body = "{}\n\n{}\n\n{}\n\n{}".format(author_string,
-                                                          fb_post_link,
+                                                          self.target_link,
                                                           help_us_string,
                                                           genre_tags)
 
@@ -117,24 +105,25 @@ class RootBeerGuyJob(TaciturnJob):
 
         # then, create the instagram post, let it have its own driver and mobile user-agent:
 
-        instagram_account = self.get_account('instagram')
-        instagram_handler = InstagramHandler(self.options, self.session, instagram_account)
+        if False:
+            instagram_account = self.get_account('instagram')
+            instagram_handler = InstagramHandler(self.options, self.session, instagram_account)
 
-        instagram_post_body = "{}\n\n{}\n\n{}\n\n{}".format(author_string,
-                                                            fb_post_link,
-                                                            help_us_string,
-                                                            genre_tags)
+            instagram_post_body = "{}\n\n{}\n\n{}\n\n{}".format(author_string,
+                                                                self.target_link,
+                                                                help_us_string,
+                                                                genre_tags)
 
-        instagram_handler.login()
-        instagram_handler.post_image(img_local_path, instagram_post_body)
+            instagram_handler.login()
+            instagram_handler.post_image(img_local_path, instagram_post_body)
 
-        print("Made instagram post.")
+            print("Made instagram post.")
 
-        instagram_handler.quit()
+            instagram_handler.quit()
 
-        print("Made a full Root Beer Guy post!")
+            print("Made a full Root Beer Guy post!")
 
-
+        print("Made a partial Root Beer Guy post!")
 
 
 job = RootBeerGuyJob()

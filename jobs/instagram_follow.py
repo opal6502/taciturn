@@ -37,10 +37,11 @@ class InstagramFollowJob(TaciturnJob):
         day_length = self.config['day_length']
         instagram_account = self.get_account('instagram')
 
-        self.log.info("config: taciturn user = {}".format(self.username))
-        self.log.info("config: instagram user = {}".format(instagram_account.name))
-        self.log.info("config: daily_max_follows = {}".format(daily_max_follows))
-        self.log.info("config: round_max_follows = {}".format(round_max_follows))
+        self.log.info(f"config: taciturn user = '{self.username}'")
+        self.log.info(f"config: instagram user = '{instagram_account.name}'")
+        self.log.info(f"config: target account = '{self.target_account}'")
+        self.log.info(f"config: daily_max_follows = {daily_max_follows}")
+        self.log.info(f"config: round_max_follows = {round_max_follows}")
 
         unfollow_stats = ApplicationHandlerStats()
         instagram_handler = InstagramHandler(instagram_account, unfollow_stats)
