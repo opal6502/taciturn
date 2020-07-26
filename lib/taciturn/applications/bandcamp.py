@@ -14,6 +14,7 @@
 # You should have received a copy of the GNU General Public License
 # along with Tactiurn.  If not, see <https://www.gnu.org/licenses/>.
 
+
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 

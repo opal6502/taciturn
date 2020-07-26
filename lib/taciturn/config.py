@@ -114,7 +114,7 @@ def get_config(filename=None):
         # print("Loading site config at {} ...".format(site_config_file))
         site_config_module = SourceFileLoader('site_config', site_config_file).load_module()
     except (ImportError, SyntaxError) as e:
-        raise RuntimeError("Could not lode site config: {}: {}".format(site_config_file, e))
+        raise RuntimeError(f"Could not lode site config: {site_config_file}: {e}")
 
     if not hasattr(site_config_module, 'site_config'):
         raise RuntimeError("Site config file must provide a 'site_config' dictionary")
@@ -219,7 +219,7 @@ def init_logger(job_name, logger_name='taciturn_log'):
     config = get_config()
     # initialize logging here:
     if config['log_individual_jobs'] is True:
-        log_file_path = os.path.join(config['log_dir'], '{}.log'.format(job_name))
+        log_file_path = os.path.join(config['log_dir'], f'{job_name}.log')
     else:
         log_file_path = os.path.join(config['log_dir'], config['log_file'])
 

@@ -17,7 +17,6 @@
 
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, StaleElementReferenceException
-from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.keys import Keys
 
@@ -36,9 +35,9 @@ class TwitterHandler(FollowerApplicationHandler):
     button_text_following = ('Following', 'Pending', 'Cancel', 'Unfollow')
     button_text_not_following = ('Follow',)
 
-    def __init__(self, app_account, handler_stats, driver=None):
+    def __init__(self, app_account, handler_stats=None, driver=None):
         super().__init__(app_account, handler_stats, driver)
-        self.log.info('Starting Twitter app handler.')
+        self.log.info("Starting Twitter app handler.")
 
     def login(self):
         self.goto_login_page()
@@ -65,7 +64,7 @@ class TwitterHandler(FollowerApplicationHandler):
         # refresh, because sometimes login isn't fully processed ...
         self.driver.refresh()
 
-        self.log.info('Logged in.')
+        self.log.info("Logged in.")
 
     def _is_stale_login_lightbox_present(self):
         lightbox_text_locator = (By.XPATH, '//*[@id="react-root"]//span[text()="Don’t miss what’s happening"]')
@@ -85,7 +84,7 @@ class TwitterHandler(FollowerApplicationHandler):
     def goto_homepage(self):
         homepage_link = self.application_url + '/home'
         while True:
-            self.log.info("Going to home page: {}".format(homepage_link))
+            self.log.info(f"Going to home page: {homepage_link}")
             self.driver.get(homepage_link)
 
             if self._is_stale_login_lightbox_present():
@@ -99,11 +98,11 @@ class TwitterHandler(FollowerApplicationHandler):
             if user_name is None:
                 self.driver.get(self.application_url + '/home')
                 profile_link = self._home_profile_link_element().get_attribute('href')
-                self.log.info("Going to page: {}".format(profile_link))
+                self.log.info(f"Going to page: {profile_link}")
                 self.driver.get(profile_link)
             else:
                 user_profile_link = '{}/{}'.format(self.application_url, user_name)
-                self.log.info("Going to page: {}".format(user_profile_link))
+                self.log.info(f"Going to page: {user_profile_link}")
                 self.driver.get(user_profile_link)
 
             if self._is_stale_login_lightbox_present():
@@ -122,7 +121,7 @@ class TwitterHandler(FollowerApplicationHandler):
                        .until(EC.presence_of_element_located(locator)).click()
             else:
                 user_following_link = '{}/{}/following'.format(self.application_url, user_name)
-                self.log.info("Going to page: {}".format(user_following_link))
+                self.log.info(f"Going to page: {user_following_link}")
                 self.driver.get(user_following_link)
 
             if self._is_stale_login_lightbox_present():
@@ -134,14 +133,14 @@ class TwitterHandler(FollowerApplicationHandler):
     def goto_followers_page(self, user_name=None):
         while True:
             if user_name is None:
-                self.log.info('Going to user followers page.')
+                self.log.info("Going to user followers page.")
                 self.goto_profile_page()
                 locator = (By.XPATH, '//*[@id="react-root"]//div[2]/a/span[2]/span[text()="Followers"]')
                 self.new_wait(timeout=10)\
                        .until(EC.presence_of_element_located(locator)).click()
             else:
                 user_followers_link = '{}/{}/followers'.format(self.application_url, user_name)
-                self.log.info('Going to page: {}'.format(user_followers_link))
+                self.log.info(f"Going to page: {user_followers_link}")
                 self.driver.get(user_followers_link)
 
             if self._is_stale_login_lightbox_present():
@@ -151,16 +150,7 @@ class TwitterHandler(FollowerApplicationHandler):
                 break
 
     def post_tweet(self, tweet_body, tweet_image=None):
-        if len(tweet_body) <= 60:
-            tweet_body_preview = tweet_body
-        else:
-            tweet_body_preview = tweet_body[:60]
-        if tweet_image is not None:
-            tweet_attachment = '[with attachment]'
-        else:
-            tweet_attachment = ''
-        self.log.info('Posting tweet for message: "{}..." {}'
-                        .format(tweet_body_preview, tweet_attachment))
+        self.log.info("Posting new tweet.")
 
         post_wait = self.new_wait(timeout=90)
         compose_tweet_button = (By.XPATH, '//a[@href="/compose/tweet" and @role="button"]')
@@ -179,10 +169,10 @@ class TwitterHandler(FollowerApplicationHandler):
             tweet_image_input_element = post_wait.until(EC.presence_of_element_located(tweet_image_input_locator))
             tweet_image_input_element.send_keys(tweet_image)
 
-            self.log.debug('Waiting for tweet image attachment.')
+            self.log.debug("Waiting for tweet image attachment.")
             tweet_image_attached_locator = (By.XPATH, '//div[@aria-label="Media" and @role="group"]//img')
-            post_wait.until(EC.visibility_of_element_located(tweet_image_attached_locator))
-            self.log.debug('Tweet image attachment verified.')
+            post_wait.until(EC.presence_of_element_located(tweet_image_attached_locator))
+            self.log.debug("Tweet image attachment verified.")
 
         submit_tweet_button_locator = (By.XPATH, '//div[@role="button"]//span[text()="Tweet"]')
         submit_tweet_button_element = post_wait.until(EC.presence_of_element_located(submit_tweet_button_locator))
@@ -193,7 +183,7 @@ class TwitterHandler(FollowerApplicationHandler):
         tweet_lightbox_xbutton_locator = (By.XPATH, '//div[@aria-label="Close" and @role="button"]/div[@dir="auto"]')
         tweet_lightbox_xbutton_element = post_wait.until(EC.presence_of_element_located(tweet_lightbox_xbutton_locator))
         post_wait.until(EC.staleness_of(tweet_lightbox_xbutton_element))
-        self.log.info('Tweet submitted.')
+        self.log.info("Tweet submitted.")
 
     def truncate_tweet(self, tweet_text):
         # scan the tweet and determine length including links, and truncate at the last word:
@@ -242,10 +232,10 @@ class TwitterHandler(FollowerApplicationHandler):
                         effective_tweet_length += 2
 
         # debug:
-        self.log.debug("truncate_tweet: len(tweet_text) =", len(tweet_text))
-        self.log.debug("truncate_tweet: scan_position =", scan_position)
-        self.log.debug("truncate_tweet: effective_tweet_length =", effective_tweet_length)
-        self.log.debug("truncate_tweet: last_scanned_space =", last_scanned_space)
+        self.log.debug(f"truncate_tweet: len(tweet_text) = {len(tweet_text)}")
+        self.log.debug(f"truncate_tweet: scan_position = {scan_position}")
+        self.log.debug(f"truncate_tweet: effective_tweet_length = {effective_tweet_length}")
+        self.log.debug(f"truncate_tweet: last_scanned_space = {last_scanned_space}")
 
         if effective_tweet_length <= tweet_limit:
             return tweet_text
@@ -348,7 +338,7 @@ class TwitterHandler(FollowerApplicationHandler):
         header_locator = (By.XPATH, '(//div[@data-testid="primaryColumn"]/div/div)[1]')
         header_element = self.new_wait().until(EC.presence_of_element_located(header_locator))
         element_y = header_element.size['height']
-        self.log.debug("flist_header_overlap_y = {}".format(element_y))
+        self.log.debug(f"flist_header_overlap_y = {element_y}")
         return element_y
 
     def flist_is_blocked_notice(self):
@@ -381,336 +371,3 @@ class TwitterHandler(FollowerApplicationHandler):
         except (NoSuchElementException, StaleElementReferenceException):
             # self.log.exception("_flist_bottom_notify_popover: Got exception!")
             return None
-
-
-class TwitterHandlerWebElements():
-    # //*[@id="react-root"]/div/div/div[2]/main/div/div/div/div[1]/div/div[2]/section/div/div/div/div[N]
-    # /section aria-labeledby="accessible-list-0" /div aria-label="Timeline: Followers"
-    _follower_entries_xpath_prefix = '//section[starts-with(@aria-labelledby, "accessible-list-")]'\
-                                     '/div[@aria-label="Timeline: Followers"]/div/div/div'
-
-    _follower_first_follower_entry = '//section[starts-with(@aria-labelledby, "accessible-list-")]/div[@aria-label="Timeline: Followers"]/div/div/div[1]'
-    _following_first_follwing_entry = '//section[starts-with(@aria-labelledby, "accessible-list-")]/div[@aria-label="Timeline: Following"]/div/div/div[1]'
-
-    implicit_default_wait = 60
-
-    # def _follower_entry_xpath_prefix(self, n=1):
-    #   return self.follower_xpath_prefix + '/div[{}]'.format(n)
-
-    def first_following_entry(self, retries=10):
-        for try_n in range(1, retries+1):
-            try:
-                self.driver.implicitly_wait(0)
-                return self.driver.find_element(By.XPATH, self._following_first_follwing_entry)
-            except (StaleElementReferenceException, NoSuchElementException) as e:
-                print('first_following_entry: caught exception:', e)
-                if try_n == retries:
-                    raise e
-                else:
-                    print("first_following_entry, caught exception try {} of {}: {}".format(try_n, retries, e))
-            finally:
-                self.driver.implicitly_wait(self.implicit_default_wait)
-
-    def first_follower_entry(self, retries=10):
-        for try_n in range(1, retries+1):
-            try:
-                self.driver.implicitly_wait(0)
-                return self.driver.find_element(By.XPATH, self._follower_first_follower_entry)
-            except (StaleElementReferenceException, NoSuchElementException) as e:
-                print('first_follower_entry: caught exception:', e)
-                if try_n == retries:
-                    raise e
-                else:
-                    print("first_follower_entry, caught exception try {} of {}: {}".format(try_n, retries, e))
-            finally:
-                self.driver.implicitly_wait(self.implicit_default_wait)
-
-    def next_follower_entry(self, follower_entry):
-        selector = './following-sibling::div[1]'
-        # may as well allow a generous wait, 5 minutes, make sure the element is probably fully populated, too:
-        WebDriverWait(follower_entry, 60*5)\
-            .until(lambda e: e.find_element(By.XPATH, selector) and self.follower_username(e))
-        return follower_entry.find_element(By.XPATH, selector)
-
-    def follower_entries(self):
-        return self.driver.find_elements(By.XPATH, self._follower_entries_xpath_prefix)
-
-    def followers_endcap(self):
-        # empty div at the end of a followers list:
-        # //*[@id="react-root"]/div/div/div[2]/main/div/div/div/div[1]/div/div[2]/section/div/div/div/div[11]/div/div
-        pass
-
-    @staticmethod
-    def follower_image(follower_entry):
-        # prefix + /div/div/div/div[1]/div/a/div[1]/div[2]/div/img
-        return follower_entry.find_element(
-            By.XPATH, './div/div/div/div[1]/div/a/div[1]/div[2]/div/img')
-
-    @staticmethod
-    def follower_username(follower_entry, retries=10):
-        # ./div/div/div/div[2]/div/div[1]/a/div/div[2]/div/span
-        # Another path seen on twitter:
-        # ./div/div/div/div[2]/div/div[1]/a/div/div/div[1]/span/span
-        for try_n in range(1, retries+1):
-            try:
-                return follower_entry.find_element(
-                    By.XPATH, './div/div/div/div[2]/div/div[1]/a/div/div[2]/div/span[starts-with(text(), "@")] | '
-                              './div/div/div/div[2]/div/div[1]/a/div/div/div[1]/span/span[starts-with(text(), "@")]')
-            except (StaleElementReferenceException, NoSuchElementException) as e:
-                print('first_follower_entry: caught exception:', e)
-                if try_n == retries:
-                    raise e
-                else:
-                    print("first_follower_entry, caught exception try {} of {}: {}".format(try_n, retries, e))
-
-    @staticmethod
-    def follower_button(follower_entry):
-        # prefix + /div/div/div/div[2]/div/div[2]/div/div/span/span
-        return follower_entry.find_element(
-            By.XPATH, './div/div/div/div[2]/div/div[2]/div/div/span/span')
-
-    def follower_is_verified(self, follower_entry):
-        # prefix + /div/div/div/div[2]/div[1]/div[1]/a/div/div[1]/div[2]/svg
-        # <svg aria-label="Verified account" ...> </svg>
-        # //*[local-name() = 'svg']  -- needed for svg in xpath
-        try:
-            self.driver.implicitly_wait(0)
-            WebDriverWait(follower_entry, 0.5, poll_frequency=1).until(
-                EC.presence_of_element_located((
-                    By.XPATH,
-                    './div/div/div/div[2]/div[1]/div[1]/a/div/div[1]/div[2]/'
-                    '*[local-name() = "svg" and @aria-label="Verified account"]'
-                )))
-            return True
-        except NoSuchElementException:
-            return False
-        finally:
-            self.driver.implicitly_wait(self.implicit_default_wait)
-
-    def follower_follows_me(self, follower_entry):
-        # //*[@id="react-root"]/div/div/div[2]/main/div/div/div/div[1]/div/div[2]/section/div/div/div/div[12]/div/div/div/div[2]/div[1]/div[1]/a/div/div[2]/div[2]/span
-        try:
-            self.driver.implicitly_wait(0)
-            follower_entry.find_element(
-                By.XPATH,
-                './div/div/div/div[2]/div[1]/div[1]/a/div/div[2]/div[2]/span[text() = "Follows you"]'
-            )
-            return True
-        except NoSuchElementException:
-            return False
-        finally:
-            self.driver.implicitly_wait(self.implicit_default_wait)
-
-    def login_username_input(self):
-        # //*[@id="react-root"]/div/div/div[2]/main/div/div/div/div[2]/div/div[2]/div/div/div/div[1]/section/form/div/div[1]/div/label/div/div[2]/div/input
-        # form action="/sessions"
-        # xpath=//input[@name="session[username_or_email]"]
-        return self.driver.find_element(
-            By.XPATH,
-            '//div[@aria-hidden="false"]//form[@action="/sessions"]//input[@name="session[username_or_email]"]')
-
-    def login_password_input(self):
-        # form action="/sessions"
-        # xpath = // input[@name="session[password]"]
-        # //div[@aria-hidden="false"]
-        # //form[@action="/sessions"]//input[@name="session[password]"]
-        return self.driver.find_element(
-            By.XPATH, '//div[@aria-hidden="false"]//form[@action="/sessions"]//input[@name="session[password]"]')
-
-    def login_button(self):
-        # //*[@id="react-root"]/div/div/div[2]/main/div/div/div/div[2]/div/div[2]/div/div/div/div[1]/section/form/div/div[3]/div/div/span/span
-        # //div[@role="button"]/div/span/span[contains(.,'Log in')]
-        return self.driver.find_element(
-            By.XPATH, '//div[@aria-hidden="false"]//form[@action="/sessions"]//span/span[contains(.,"Log in")]')
-
-    def home_profile_link(self):
-        # //*[@id="react-root"]/div/div/div[2]/header/div/div/div/div[1]/div[2]/nav/a[7]
-        # nav aria-label="Primary"
-        # a aria-label="Profile"
-        return self.driver.find_element(
-            By.XPATH, '//nav[@aria-label="Primary"]/a[@aria-label="Profile"]')
-
-    def followers_tab_link(self):
-        # //*[@id="react-root"]/div/div/div[2]/main/div/div/div/div[1]/div/div[1]/div[2]/nav/div[2]/div[2]/a/div/span
-        # nav[@role="navigation"]
-        # span[contains(.,"Followers")]
-        # XXX there's a non-visible element on the page that we need to skip, hence the (...)[2]
-        return self.driver.find_element(
-            By.XPATH,
-            '(//nav[@role="navigation"]//a[@role="tab" and @aria-selected="true"]'
-            '/div/span[text() = "Followers"])[2]')
-
-    def followers_tab_overlap(self, retries=10):
-        # get the y dimension of the overlapping tab, because it will obscure clicks!
-        # //*[@id="react-root"]/div/div/div[2]/main/div/div/div/div[N]/div/div
-        # //div[@data-testid="primaryColumn"]/div/div
-        for try_n in range(1, retries+1):
-            try:
-                tab_element = self.driver.find_element(
-                    By.XPATH,
-                    '(//div[@data-testid="primaryColumn"]/div/div)[1]'
-                )
-                return tab_element.size['height']
-            except (StaleElementReferenceException, NoSuchElementException) as e:
-                print('next_follower_entry: caught exception:', e)
-                if try_n == retries:
-                    raise e
-                else:
-                    print("next_follower_entry, caught exception try {} of {}: {}".format(try_n, retries, e))
-
-    def follow_click_verify_cb(self, follower_entry):
-        def follow_click_verify(x):
-            print("follow_click_verify_cb: rescanning button text.")
-            b = self.follower_button(follower_entry)
-            t = b.text
-            print("follow_click_verify_cb: button text =", t)
-            r = t in BUTTON_TEXT_FOLLOWING
-            print("follow_click_verify, text: ", t)
-            print("follow_click_verify, result: ", r)
-            return r
-        return follow_click_verify
-
-    def bottom_notify_popover_text(self):
-        # grab the text from the popover that sometimes appears at the bottom!
-        # need to be quick because it shows up in the dom for only a few seconds.
-        # Seems best to just grab the text!?
-        # //*[@id="react-root"]/div/div/div[1]/div[2]/div/div/div[1]/span
-        # notification strings, verbatim:
-        #  'You are unable to follow more people at this time.'
-        try:
-            self.driver.implicitly_wait(0)
-            return self.driver.find_element(
-                By.XPATH,
-                '//*[@id="react-root"]/div/div/div[1]/div[2]/div/div/div[1]/span'
-            ).text
-        except NoSuchElementException:
-            # print("bottom_notify_popover_text: NoSuchElementException")
-            return None
-        finally:
-            self.driver.implicitly_wait(self.implicit_default_wait)
-
-    def is_follower_limit_notify_present(self):
-        text = self.bottom_notify_popover_text()
-        if text is not None and text == 'You are unable to follow more people at this time.':
-            return True
-        return False
-
-    def is_follower_blocked_notify_present(self):
-        text = self.bottom_notify_popover_text()
-        if text is not None and text == 'You have been blocked from following this user at their request.':
-            return True
-        return False
-
-    def blocked_notice_gone_cb(self):
-        def check_block_notice(x):
-            try:
-                self.driver.implicitly_wait(0)
-                text = self.bottom_notify_popover_text()
-                if text is not None and text == 'You have been blocked from following this user at their request.':
-                    return False
-            except NoSuchElementException:
-                return True
-            finally:
-                self.driver.implicitly_wait(self.implicit_default_wait)
-            return True
-        return check_block_notice
-
-    # Scan for account restrictions:
-    def account_restricted(self):
-        # we get redirected to: https://twitter.com/account/access
-
-        # header text:
-        # /html/body/div[2]/div/div[1]
-        # <div class="PageContainer">/<div class="Section">/<div class="PageHeader Edge">
-        #    'We've temporarily limited some of your account features.'
-
-        # description text:
-        # /html/body/div[2]/div/div[3]/div[2]
-        # <div class="PageContainer">/<div class="Section">/<div class="TextGroup">/<div class="TextGroup-text">
-        # Your account appears to be in violation of Twitter's <a href="https://help.twitter.com/using-twitter/twitter-follow-limit" target="_blank">following policy</a>. Your ability to follow, like, and Retweet will be limited for the following period of time:
-        # </div>
-        # restricted words: follow, like, and Retweet
-
-        # duration text:
-        # /html/body/div[2]/div/div[4]/div
-        # <div class="PageContainer">/<div class="Section">/<div class="TextGroup TimeRemaining">/<div class="TextGroup-header">
-        # '3 days and 0 hours.'
-        pass
-
-    def is_loading_followers_progressbar_present(self):
-        # <div aria-valuemax="1" aria-valuemin="0" aria-label="Loading Followers" role="progressbar" class="css-1dbjc4n r-1awozwy r-1777fci">
-        #    <div class="css-1dbjc4n r-17bb2tj r-1muvv40 r-127358a r-1ldzwu0" style="height: 26px; width: 26px;">
-        #       <svg height="100%" viewBox="0 0 32 32" width="100%">
-        #          <circle cx="16" cy="16" fill="none" r="14" stroke-width="4" style="stroke: rgb(23, 191, 99); opacity: 0.2;"></circle>
-        #          <circle cx="16" cy="16" fill="none" r="14" stroke-width="4" style="stroke: rgb(23, 191, 99); stroke-dasharray: 80; stroke-dashoffset: 60;"></circle>
-        #       </svg>
-        #    </div>
-        # </div>
-        try:
-            self.driver.implicitly_wait(0)
-            return self.driver.find_element(
-                By.XPATH,
-                '//div[@aria-label="Loading Followers" and @role="progressbar"]/div/*[local-name() = "svg"]'
-            ).text
-        except NoSuchElementException:
-            # print("bottom_notify_popover_text: NoSuchElementException")
-            return None
-        finally:
-            self.driver.implicitly_wait(self.implicit_default_wait)
-
-    def is_followers_end(self, follower_entry, retries=10):
-        def dump_debug_html():
-            with open('is_followers_end.html', 'w') as fh:
-                fh.write(follower_entry.get_attribute('innerHTML'))
-
-        for try_n in range(1, retries+1):
-
-            # first, try to read a non-empty node:
-            try:
-                self.driver.implicitly_wait(10)
-                dump_debug_html()
-                # use follower_username to detect a non-empty element:
-                self.follower_username(follower_entry)
-                print("is_followers_end (non-empty): False")
-                return False
-            except (NoSuchElementException, StaleElementReferenceException, TimeoutException) as e:
-                # print('is_followers_end: caught exception:', e)
-                if try_n == retries:
-                    dump_debug_html()
-                    print("is_followers_end (non-empty): False")
-                    return False
-            finally:
-                 self.driver.implicitly_wait(self.implicit_default_wait)
-
-            # then, try to read an empty node:
-            try:
-                self.driver.implicitly_wait(30)
-                el = follower_entry.find_element(By.XPATH, './div/div[not(node())]')
-                dump_debug_html()
-                print("is_followers_end (is-empty): True")
-                return True
-            except (NoSuchElementException, StaleElementReferenceException, TimeoutException) as e:
-                # print('is_followers_end: caught exception:', e)
-                if try_n == retries:
-                    dump_debug_html()
-                    print("is_followers_end (is-empty): False")
-                    return False
-            finally:
-                 self.driver.implicitly_wait(self.implicit_default_wait)
-        dump_debug_html()
-        print("is_followers_end (out): False")
-        return False
-
-    # def verify_unfollow_lightbox(self):
-    #     # //*[@id="react-root"]/div/div/div[1]/div[2]/div/div/div/div[2]/div[2]/div[1]/span
-    #     e = self.driver.find_element(
-    #             By.XPATH,
-    #             '//*[@id="react-root"]/div/div/div[1]/div[2]/div/div/div/div[2]'
-    #             '/div[2]/div[1]/span[starts-with(text(), "Unfollow")]')
-    #     return
-
-    def unfollow_lightbox_button(self):
-        return self.driver.find_element(
-            By.XPATH,
-            '//*[@id="react-root"]/div/div/div[1]/div[2]/div/div'
-            '/div/div[2]/div[2]/div[3]/div[2]/div/span/span[text() = "Unfollow"]')

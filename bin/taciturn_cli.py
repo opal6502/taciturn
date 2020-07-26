@@ -98,11 +98,12 @@ def cmd_user(verb, arg=None, application=None):
             .filter(and_(User.name == arg,
                          Application.name == application,
                          Application.id == User.application_id)).count() != 0:
-            raise TypeError("User with name '{}' for application already exists.".format(arg))
+            print(f"User with name '{arg}' for application already exists.", file=sys.stderr)
+            sys.exit(1)
         app = session.query(Application).filter_by(name=application).one()
 
-        password1 = getpass('Password for {}: '.format(arg))
-        password2 = getpass('Password for {}: '.format(arg))
+        password1 = getpass(f'Password for {arg}: ')
+        password2 = getpass(f'Password for {arg}: ')
         if password1 != password1:
             print("Passwords do not match.")
             return
@@ -111,7 +112,7 @@ def cmd_user(verb, arg=None, application=None):
 
         session.add(new_user)
         session.commit()
-        print("Added user '{}' to '{}'.".format(new_user.name, app.name))
+        print(f"Added user '{new_user.name}' to '{app.name}'.")
 
     elif verb == 'delete':
         if application is None:
@@ -121,7 +122,8 @@ def cmd_user(verb, arg=None, application=None):
                                            Application.name == application,
                                            Application.id == User.application_id)).one_or_none()
         if user is None:
-            raise TypeError("No user '{}' for application '{}' found".format(arg, application))
+            print(f"No user '{arg}' for application '{application}' found", file=sys.stderr)
+            sys.exit(1)
         session.delete(user)
         session.commit()
         print("Deleted user '{}' from '{}'.".format(user.name, application))
@@ -131,9 +133,10 @@ def cmd_user(verb, arg=None, application=None):
                                            Application.name == application,
                                            Application.id == User.application_id)).one_or_none()
         if user is None:
-            raise TypeError("No user '{}' for application '{}' found".format(arg, application))
-        password1 = getpass('Password for {}: '.format(arg))
-        password2 = getpass('Password for {}: '.format(arg))
+            print(f"No user '{arg}' for application '{application}' found", file=sys.stderr)
+            sys.exit(1)
+        password1 = getpass(f'Password for {arg}: ')
+        password2 = getpass(f'Password for {arg}: ')
 
         if password1 != password1:
             print("Passwords do not match.")
@@ -141,7 +144,7 @@ def cmd_user(verb, arg=None, application=None):
 
         user.password = password1
         session.commit()
-        print("Password updated for '{}' from '{}'.".format(user.name, application))
+        print(f"Password updated for '{user.name}' from '{application}'.")
 
 
 admin_dispatcher = {
@@ -176,6 +179,8 @@ def parse_arguments(args=None):
                     help="Specify a bandcamp link to post, for the 'rbg_bandcamp_post' job")
     ap.add_argument('-g', '--genre', type=str, nargs=1, default=None,
                     help="Specify a musical genre, for the 'rbg_bandcamp_post' job")
+    ap.add_argument('-I', '--noinstagram', action='store_true',
+                    help="Do not post to instagram, for the 'rbg_bandcamp_post' job")
 
     # parse arguments:
     pa = ap.parse_args(args)

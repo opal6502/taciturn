@@ -82,11 +82,6 @@ engine = config['database_engine']
 session = Session(bind=engine)
 
 
-def warn(*args, **kwargs):
-    print(*args, **kwargs)
-    #print(*args, file=sys.stderr, **kwargs)
-
-
 def list_apps(app_name=None):
     apps = None
 
@@ -111,14 +106,14 @@ def list_apps(app_name=None):
 
 def add_app(app_name):
     if session.query(Application).filter(Application.name == app_name).count() > 0:
-        print("App '{}' already exists.".format(app_name))
+        print(f"App '{app_name}' already exists.", file=sys.stderr)
         return False
 
     new_app = Application(name=app_name, established=datetime.now())
     session.add(new_app)
     session.commit()
 
-    print("App '{}' added.".format(app_name))
+    print(f"App '{app_name}' added.")
 
     return True
 
@@ -127,13 +122,13 @@ def delete_app(app_name):
     app = session.query(Application).filter(Application.name == app_name).one_or_none()
 
     if app is None:
-        print("App '{}' does not exist.".format(app_name))
+        print(f"App '{app_name}' does not exist.")
         return False
 
     session.delete(app)
     session.commit()
 
-    print("App '{}' deleted.".format(app_name))
+    print(f"App '{app_name}' deleted.")
 
     return True
 
@@ -160,14 +155,14 @@ def list_users(user_name=None):
 
 def add_user(user_name):
     if session.query(User).filter(User.name == user_name).count() > 0:
-        print("User '{}' already exists.".format(user_name))
+        print(f"User '{user_name}' already exists.", file=sys.stderr)
         return False
 
     new_app = User(name=user_name, established=datetime.now())
     session.add(new_app)
     session.commit()
 
-    print("User '{}' added.".format(user_name))
+    print(f"User '{user_name}' added.")
 
     return True
 
@@ -176,13 +171,13 @@ def delete_user(user_name):
     app = session.query(User).filter(User.name == user_name).one_or_none()
 
     if app is None:
-        print("User '{}' does not exist.".format(user_name))
+        print(f"User '{user_name}' does not exist.", file=sys.stderr)
         return False
 
     session.delete(app)
     session.commit()
 
-    print("User '{}' deleted.".format(user_name))
+    print(f"User '{user_name}' deleted.")
 
     return True
 
@@ -196,13 +191,13 @@ def list_user_accounts(user_name, app_name=None, account_name=None):
         app = session.query(Application).filter_by(name=app_name).one_or_none()
 
     if app_name is not None and user is None and app is None:
-        warn("No such user '{}' or app '{}'.".format(user_name, app_name))
+        print(f"No such user '{user_name}' or app '{app_name}'.", file=sys.stderr)
         return False
     if app_name is not None and user is not None and app is None:
-        warn("No such app '{}'.".format(app_name))
+        print(f"No such app '{app_name}'.", file=sys.stderr)
         return False
     if user is None:
-        warn("No such user '{}'.".format(user_name))
+        print(f"No such user '{user_name}'.", file=sys.stderr)
         return False
 
     if app_name is None and account_name is None:
@@ -221,23 +216,22 @@ def list_user_accounts(user_name, app_name=None, account_name=None):
 
     if app_name is not None and account_name is not None:
         if accounts.count() == 0:
-            warn("No such account '{}' for '{}' on app {}".format(account_name, user_name, app_name))
+            print(f"No such account '{account_name}' for '{user_name}' on app {app_name}", file=sys.stderr)
             return False
         elif accounts.count() == 1:
-            print("Account '{}' for '{}' on app {}, created {}".format(account_name,
-                                                                       user_name,
-                                                                       app_name,
-                                                                       accounts[0].established))
+            print(f"Account '{account_name}' for '{user_name}' "
+                  f"on app {app_name}, created {accounts[0].established}")
             return True
         else:
-            raise ValueError("There should only be one account for "
-                             "'{}' on app '{}', found {}?".format(user_name, app_name, accounts.count()))
+            print(f"There should only be one account for '{user_name}' on app '{app_name}', found {accounts.count()}?",
+                  file=sys.stderr)
+            sys.exit(1)
 
     print('-'*72)
     if app_name is not None:
-        print(" Accounts for '{}' on '{}':".format(user_name, app_name))
+        print(f" Accounts for '{user_name}' on '{app_name}':")
     else:
-        print(" Accounts for '{}':".format(user_name))
+        print(f" Accounts for '{user_name}':")
     print('-'*72)
 
     if accounts is None or accounts.count() == 0:
@@ -245,7 +239,7 @@ def list_user_accounts(user_name, app_name=None, account_name=None):
         return False
 
     for account in accounts.all():
-        print()
+        print(account)
 
 
 def add_user_account(user_name, app_name, account_name):
@@ -254,19 +248,20 @@ def add_user_account(user_name, app_name, account_name):
                                                           AppAccount.user_id == User.id,
                                                           AppAccount.application_id == Application.id)).one_or_none()
     if account is not None:
-        warn("Account '{}' already exists for '{}' on app '{}'".format(account_name, user_name, app_name))
+        print(f"Account '{account_name}' already exists for '{user_name}' on app '{app_name}'",
+             file=sys.stderr)
         return False
 
     app = session.query(Application).filter_by(name=app_name).one_or_none()
     user = session.query(User).filter_by(name=user_name).one_or_none()
     if app is None and user is None:
-        warn("No such user '{}', no such app '{}'.".format(user_name, app_name))
+        print(f"No such user '{user_name}', no such app '{app_name}'.", file=sys.stderr)
         return False
     if app is None:
-        warn("No such app '{}'".format(app_name))
+        print(f"No such app '{app_name}'", file=sys.stderr)
         return False
     if user is None:
-        warn("No such user '{}'".format(user_name))
+        print(f"No such user '{user_name}'", file=sys.stderr)
         return False
 
     account_password = input_account_password()
@@ -279,7 +274,7 @@ def add_user_account(user_name, app_name, account_name):
     session.add(new_account)
     session.commit()
 
-    print("New account '{}' added for '{}' on app '{}'".format(account_name, user_name, app_name))
+    print(f"New account '{account_name}' added for '{user_name}' on app '{app_name}'")
     return True
 
 
@@ -289,13 +284,13 @@ def delete_user_account(user_name, app_name, account_name):
                                                     AppAccount.user_id == User.id,
                                                     AppAccount.application_id == Application.id)).one_or_none()
     if account is None:
-        warn("No account '{}' for user '{}' on app '{}'".format(account_name, user_name, app_name))
+        print(f"No account '{account_name}' for user '{user_name}' on app '{app_name}'", file=sys.stderr)
         return False
 
     session.delete(account)
     session.commit()
 
-    print("Deleted account '{}' for '{}' on app '{}'".format(account_name, user_name, app_name))
+    print(f"Deleted account '{account_name}' for '{user_name}' on app '{app_name}'")
     return True
 
 
@@ -305,7 +300,7 @@ def password_user_account(user_name, app_name, account_name):
                                                     AppAccount.user_id == User.id,
                                                     AppAccount.application_id == Application.id)).one_or_none()
     if account is None:
-        warn("No account '{}' for user '{}' on app '{}'".format(account_name, user_name, app_name))
+        print(f"No account '{account_name}' for user '{user_name}' on app '{app_name}'", file=sys.stderr)
         return False
 
     account_password = input_account_password()
@@ -313,7 +308,7 @@ def password_user_account(user_name, app_name, account_name):
 
     session.commit()
 
-    print("New password for account '{}' for user '{}' on app '{}'".format(account_name, user_name, app_name))
+    print(f"New password for account '{account_name}' for user '{user_name}' on app '{app_name}'")
     return True
 
 
@@ -334,9 +329,9 @@ def list_whitelist(user_name, app_name, entry_name=None):
 
     print('-' * 72)
     if entry_name is not None:
-        print(" Whitelist entry '{}' for '{}' on '{}':".format(entry_name, user_name, app_name))
+        print(f" Whitelist entry '{entry_name}' for '{user_name}' on '{app_name}':")
     else:
-        print(" Whitelist for '{}' on '{}':".format(user_name, app_name))
+        print(f" Whitelist for '{user_name}' on '{app_name}':")
     print('-' * 72)
 
     if entries.count() == 0:
@@ -357,19 +352,19 @@ def add_to_whitelist(user_name, app_name, entry_name):
                      Application.id == Whitelist.application_id))\
         .one_or_none()
     if entry is not None:
-        warn("'{}' is already in whitelist for '{}' on app '{}'".format(entry_name, user_name, app_name))
+        print(f"'{entry_name}' is already in whitelist for '{user_name}' on app '{app_name}'", file=sys.stderr)
         return False
 
     app = session.query(Application).filter_by(name=app_name).one_or_none()
     user = session.query(User).filter_by(name=user_name).one_or_none()
     if app is None and user is None:
-        warn("No such user '{}', no such app '{}'.".format(user_name, app_name))
+        print(f"No such user '{user_name}', no such app '{app_name}'.", file=sys.stderr)
         return False
     if app is None:
-        warn("No such app '{}'".format(app_name))
+        print(f"No such app '{app_name}'", file=sys.stderr)
         return False
     if user is None:
-        warn("No such user '{}'".format(user_name))
+        print(f"No such user '{user_name}'", file=sys.stderr)
         return False
 
     new_whitelist_entry = Whitelist(name=entry_name,
@@ -379,7 +374,7 @@ def add_to_whitelist(user_name, app_name, entry_name):
     session.add(new_whitelist_entry)
     session.commit()
 
-    print("Added '{}' to whitelist for '{}' on app '{}'".format(entry_name, user_name, app_name))
+    print(f"Added '{entry_name}' to whitelist for '{user_name}' on app '{app_name}'")
     return True
 
 
@@ -387,13 +382,13 @@ def delete_from_whitelist(user_name, app_name, entry_name):
     app = session.query(Application).filter_by(name=app_name).one_or_none()
     user = session.query(User).filter_by(name=user_name).one_or_none()
     if app is None and user is None:
-        warn("No such user '{}', no such app '{}'.".format(user_name, app_name))
+        print(f"No such user '{user_name}', no such app '{app_name}'.", file=sys.stderr)
         return False
     if app is None:
-        warn("No such app '{}'".format(app_name))
+        print(f"No such app '{app_name}'", file=sys.stderr)
         return False
     if user is None:
-        warn("No such user '{}'".format(user_name))
+        print(f"No such user '{user_name}'", file=sys.stderr)
         return False
 
     entry = session.query(Whitelist)\
@@ -405,13 +400,13 @@ def delete_from_whitelist(user_name, app_name, entry_name):
         .one_or_none()
 
     if entry is None:
-        warn("'{}' is not in whitelist for '{}' on app '{}'".format(entry_name, user_name, app_name))
+        print(f"'{entry_name}' is not in whitelist for '{user_name}' on app '{app_name}'", file=sys.stderr)
         return False
 
     session.delete(entry)
     session.commit()
 
-    print("Deleted '{}' to whitelist for '{}' on app '{}'".format(entry_name, user_name, app_name))
+    print(f"Deleted '{entry_name}' to whitelist for '{user_name}' on app '{app_name}'")
     return True
 
 
@@ -432,9 +427,9 @@ def list_blacklist(user_name, app_name, entry_name=None):
 
     print('-' * 72)
     if entry_name is not None:
-        print(" Blacklist entry '{}' for '{}' on '{}':".format(entry_name, user_name, app_name))
+        print(f" Blacklist entry '{entry_name}' for '{user_name}' on '{app_name}':")
     else:
-        print(" Blacklist for '{}' on '{}':".format(user_name, app_name))
+        print(f" Blacklist for '{user_name}' on '{app_name}':")
     print('-' * 72)
 
     if entries.count() == 0:
@@ -455,19 +450,19 @@ def add_to_blacklist(user_name, app_name, entry_name):
                      Application.id == Blacklist.application_id))\
         .one_or_none()
     if entry is not None:
-        warn("'{}' is already in whitelist for '{}' on app '{}'".format(entry_name, user_name, app_name))
+        print(f"'{entry_name}' is already in whitelist for '{user_name}' on app '{app_name}'", file=sys.stderr)
         return False
 
     app = session.query(Application).filter_by(name=app_name).one_or_none()
     user = session.query(User).filter_by(name=user_name).one_or_none()
     if app is None and user is None:
-        warn("No such user '{}', no such app '{}'.".format(user_name, app_name))
+        print(f"No such user '{user_name}', no such app '{app_name}'.", file=sys.stderr)
         return False
     if app is None:
-        warn("No such app '{}'".format(app_name))
+        print(f"No such app '{app_name}'", file=sys.stderr)
         return False
     if user is None:
-        warn("No such user '{}'".format(user_name))
+        print(f"No such user '{user_name}'", file=sys.stderr)
         return False
 
     new_blacklist_entry = Blacklist(name=entry_name,
@@ -477,7 +472,7 @@ def add_to_blacklist(user_name, app_name, entry_name):
     session.add(new_blacklist_entry)
     session.commit()
 
-    print("Added '{}' to blacklist for '{}' on app '{}'".format(entry_name, user_name, app_name))
+    print(f"Added '{entry_name}' to blacklist for '{user_name}' on app '{app_name}'")
     return True
 
 
@@ -485,13 +480,13 @@ def delete_from_blacklist(user_name, app_name, entry_name):
     app = session.query(Application).filter_by(name=app_name).one_or_none()
     user = session.query(User).filter_by(name=user_name).one_or_none()
     if app is None and user is None:
-        warn("No such user '{}', no such app '{}'.".format(user_name, app_name))
+        print(f"No such user '{user_name}', no such app '{app_name}'.", file=sys.stderr)
         return False
     if app is None:
-        warn("No such app '{}'".format(app_name))
+        print(f"No such app '{app_name}'", file=sys.stderr)
         return False
     if user is None:
-        warn("No such user '{}'".format(user_name))
+        print(f"No such user '{user_name}'", file=sys.stderr)
         return False
 
     entry = session.query(Blacklist)\
@@ -503,13 +498,13 @@ def delete_from_blacklist(user_name, app_name, entry_name):
         .one_or_none()
 
     if entry is None:
-        warn("'{}' is not in blacklist for '{}' on app '{}'".format(entry_name, user_name, app_name))
+        print(f"'{entry_name}' is not in blacklist for '{user_name}' on app '{app_name}'", file=sys.stderr)
         return False
 
     session.delete(entry)
     session.commit()
 
-    print("Deleted '{}' from blacklist for '{}' on app '{}'".format(entry_name, user_name, app_name))
+    print(f"Deleted '{entry_name}' from blacklist for '{user_name}' on app '{app_name}'")
     return True
 
 
@@ -520,12 +515,12 @@ def input_account_password():
         if password1 == password2:
             return password1
         else:
-            print("Passwords do not match, try again.")
+            print("Passwords do not match, try again.", file=sys.stderr)
 
 
 def run_command(args):
     if len(args) < 1:
-        warn("At least one argument required: 'app' or 'user'")
+        print("At least one argument required: 'app' or 'user'", file=sys.stderr)
         return False
 
     #  taciturn_admin.py app
@@ -543,7 +538,7 @@ def run_command(args):
             elif args[2] == 'delete':
                 return delete_app(args[1])
             else:
-                warn("cannot perform '{}' on app '{}'".format(args[2], args[1]))
+                print(f"cannot perform '{args[2]}' on app '{args[1]}'", file=sys.stderr)
                 return False
     elif args[0] == 'user':
         #  taciturn_admin.py user
@@ -561,14 +556,14 @@ def run_command(args):
             elif args[2] == 'app':
                 list_user_accounts(args[1])
             else:
-                warn("Syntax error.")
+                print("Syntax error.", file=sys.stderr)
                 return False
         # taciturn_admin.py user user-name app app-name
         elif len(args) == 4:
             if args[0] == 'user' and args[2] == 'app':
                 return list_user_accounts(args[1], args[3])
             else:
-                warn("Syntax error.")
+                print("Syntax error.", file=sys.stderr)
                 return False
         #  taciturn_admin.py user user-name app app-name account
         elif len(args) == 5:
@@ -580,7 +575,7 @@ def run_command(args):
             elif args[0] == 'user' and args[2] == 'app' and args[4] == 'blacklist':
                 return list_blacklist(args[1], args[3])
             else:
-                warn("Syntax error.")
+                print("Syntax error.", file=sys.stderr)
                 return False
         #  taciturn_admin.py user user-name app app-name account account-name
         elif len(args) == 6:
@@ -591,7 +586,7 @@ def run_command(args):
             elif args[0] == 'user' and args[2] == 'app' and args[4] == 'blacklist':
                 return list_blacklist(args[1], args[3], args[5])
             else:
-                warn("Syntax error.")
+                print("Syntax error.", file=sys.stderr)
                 return False
         #  taciturn_admin.py user user-name app app-name account account-name { add | delete | password }
         elif len(args) == 7:
@@ -610,7 +605,7 @@ def run_command(args):
             elif args[0] == 'user' and args[2] == 'app' and args[4] == 'blacklist' and args[6] == 'delete':
                 return delete_from_blacklist(args[1], args[3], args[5])
             else:
-                warn("Syntax error.")
+                print("Syntax error.", file=sys.stderr)
                 return False
 
 

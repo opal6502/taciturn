@@ -23,7 +23,7 @@ import numbers
 
 from sqlalchemy import and_
 
-from taciturn.applications.base import BaseApplicationHandler, AppException
+from taciturn.applications.base import BaseApplicationHandler, ApplicationHandlerException
 
 from taciturn.db.base import (
     Application,
@@ -47,6 +47,12 @@ class LoginApplicationHandler(BaseApplicationHandler):
         # init white/blacklists:
         self._load_access_lists()
 
+        try:
+            config_name = 'app:' + self.application_name
+            self.action_timeout = self.config[config_name]['action_timeout']
+        except KeyError:
+            self.log.warning(f"Application '{self.application_name}' doesn't specify 'action_timeout' in config.")
+
     @abstractmethod
     def login(self):
         pass
@@ -60,11 +66,11 @@ class LoginApplicationHandler(BaseApplicationHandler):
         pass
 
     def goto_login_page(self):
-        self.log.info("Going to login page: {}".format(self.application_login_url))
+        self.log.info(f"Going to login page: {self.application_login_url}")
         self.driver.get(self.application_login_url)
 
     def _load_access_lists(self):
-        self.log.info('Loading whitelist.')
+        self.log.info("Loading whitelist.")
         wl = self.session.query(Whitelist.name)\
                         .filter(and_(Whitelist.user_id == self.app_account.user_id,
                                      Whitelist.application_id == Application.id,
@@ -72,7 +78,7 @@ class LoginApplicationHandler(BaseApplicationHandler):
                                      Application.id == Whitelist.application_id))
         self.whitelist = {w.lower() for w, in wl}
 
-        self.log.info('Loading blacklist.')
+        self.log.info("Loading blacklist.")
         bl = self.session.query(Blacklist.name)\
                         .filter(and_(Blacklist.user_id == self.app_account.user_id,
                                      Blacklist.application_id == Application.id,
@@ -102,17 +108,17 @@ class LoginApplicationHandler(BaseApplicationHandler):
         if self._last_action is not None and \
             time() < (self._last_action + sleep_duration):
             corrected_sleep_duration = (self._last_action + sleep_duration) - time()
-            self.log.info("Pausing action for {}".format(timedelta(seconds=corrected_sleep_duration)))
+            self.log.info(f"Pausing action for {timedelta(seconds=corrected_sleep_duration)}")
             sleep(corrected_sleep_duration)
         else:
             self.log.debug("No pause necessary.")
 
 
-class AppEndOfListException(AppException):
+class ApplicationHandlerEndOfListException(ApplicationHandlerException):
     "Raise whenever a list end is encountered"
     pass
 
 
-class AppUserPrivilegeSuspendedException(AppException):
+class ApplicationHandlerUserPrivilegeSuspendedException(ApplicationHandlerException):
     "Raise whenever a user privilege has been suspended"
     pass

@@ -31,7 +31,7 @@ from PIL import Image, ImageChops
 import requests
 from io import BytesIO
 
-import os
+import os, sys
 import urllib.parse
 from time import time, sleep
 from datetime import datetime, timedelta
@@ -64,10 +64,6 @@ class BaseApplicationHandler(ABC):
         if self.driver is None:
             self._init_webdriver()
 
-        # we'll say every app has to have an action_timeout:
-        config_name = 'app:'+self.application_name
-        self.action_timeout = self.config[config_name]['action_timeout']
-
         if self.options.cookies:
             self.load_cookies(self.options.cookies[0])
 
@@ -80,7 +76,7 @@ class BaseApplicationHandler(ABC):
         else:
             webdriver_type = self.options.driver or self.config['selenium_webdriver']
 
-        self.log.info("Starting Selenium with '{}' web driver".format(webdriver_type))
+        self.log.info(f"Starting Selenium with '{webdriver_type}' web driver")
 
         if webdriver_type is None or webdriver_type == 'chrome':
             from selenium.webdriver.chrome.options import Options
@@ -127,31 +123,31 @@ class BaseApplicationHandler(ABC):
         elif webdriver_type == 'htmlunitwithjs':
             self.driver = Remote(desired_capabilities=webdriver.DesiredCapabilities.HTMLUNITWITHJS)
         else:
-            self.log.critical("Webdriver '{}' not supported, check config!".format(webdriver_type))
-            raise TypeError("Webdriver '{}' not supported, check config!".format(webdriver_type))
+            self.log.critical(f"Webdriver '{webdriver_type}' not supported, check config!")
+            sys.exit(1)
 
     def goto_path(self, page_path):
         self.driver.get(self.application_url+'/'+page_path)
 
     def load_cookies(self, cookie_file):
-        self.log.info("loading cookies from {}".format(cookie_file))
+        self.log.info(f"Loading cookies from {cookie_file}")
         cookiejar = MozillaCookieJar(cookie_file)
         cookiejar.load()
         for c in cookiejar:
             self.driver.get_cookie({'name': c.name, 'value': c.value})
 
     def quit(self):
-        self.log.info('Quitting.')
+        self.log.info("Quitting.")
         self.driver.quit()
         self.session.close()
         del self.driver
         del self.session
 
     def element_scroll_to(self, element, y_offset=None):
-        self.driver.execute_script("arguments[0].scrollIntoView();", element)
+        self.driver.execute_script('arguments[0].scrollIntoView();', element)
         if y_offset is not None:
-            scroll_position = self.driver.execute_script("return document.documentElement.scrollTop;")
-            self.driver.execute_script("window.scrollTo(0, arguments[0]);", scroll_position - y_offset)
+            scroll_position = self.driver.execute_script('return document.documentElement.scrollTop;')
+            self.driver.execute_script('window.scrollTo(0, arguments[0]);', scroll_position - y_offset)
 
     def element_rect_bottom(self, element):
         return self.driver.execute_script(self._element_rect_script('bottom'), element)
@@ -161,6 +157,15 @@ class BaseApplicationHandler(ABC):
 
     def _element_rect_script(self, side):
         return f"var rect = arguments[0].getBoundingClientRect(); return rect.{side};"
+
+    def _delete_old_temp_files(self):
+        pass
+
+    def _asset_path_prefix(self, file_name=None):
+        if file_name is None:
+            return os.path.join(self.assets_dir, 'application', self.application_name)
+        else:
+            return os.path.join(self.assets_dir, 'application', self.application_name, file_name)
 
     def temp_download_file(self, file_url, prefix=None, retries=10):
         # properly parse the url and get the extension:
@@ -175,11 +180,11 @@ class BaseApplicationHandler(ABC):
         filename_hash = sha256(str(datetime.now()).encode('utf-8')).hexdigest()
 
         if parsed_ext:
-            filename = f'{filename_prefix}-{filename_hash}.{parsed_ext}'
+            filename = f'{filename_prefix}-{filename_hash}{parsed_ext}'
         else:
             filename = f'{filename_prefix}-{filename_hash}'
 
-        filename_with_path = os.path.join(self.assets_dir, 'application', self.application_name, filename)
+        filename_with_path = self._asset_path_prefix(filename)
 
         for try_n in range(1, retries+1):
             try:
@@ -201,7 +206,7 @@ class BaseApplicationHandler(ABC):
     def is_default_image(self, image_url):
         return self.image_cmp(
             image_url,
-            os.path.join(self.assets_dir, 'application', self.application_name, self.default_profile_image))
+            self._asset_path_prefix(self.default_profile_image))
 
     def image_cmp(self, image1_url_or_path, image2_url_or_path):
         image1_file = self.open_image_file_or_url(image1_url_or_path)
@@ -231,9 +236,6 @@ class BaseApplicationHandler(ABC):
                 # try url as path:
                 return Image.open(image_url_or_path)
 
-    def app_asset_prefix(self):
-        return os.path.join(self.assets_dir, self.application_asset_dirname)
-
     def new_wait(self, driver=None, timeout=60, ignored_exceptions=None):
         if driver is None:
             driver = self.driver
@@ -253,10 +255,10 @@ class BaseApplicationHandler(ABC):
             try:
                 return driver.find_element(*locator).text
             except ignored_exceptions as e:
-                self.log.exception("wait_text: Caught exception!")
+                self.log.exception("BaseApplicationHandler.wait_text: Caught exception!")
 
             if time() > wait_until:
-                raise TimeoutException("Couldn't get element text.")
+                raise ApplicationHandlerException("Couldn't get element text.")
 
     def wait_attribute(self, driver=None, locator=None, attribute_name=None, timeout=60, ignored_exceptions=None):
         if driver is None:
@@ -268,10 +270,10 @@ class BaseApplicationHandler(ABC):
             try:
                 return driver.find_element(*locator).get_attribute(attribute_name)
             except ignored_exceptions:
-                self.log.error("wait_attribute: Caught exception!")
+                self.log.error("BaseApplicationHandler.wait_attribute: Caught exception!")
 
             if time() > wait_until:
-                raise TimeoutException("Couldn't get element text.")
+                raise ApplicationHandlerException("Couldn't get element text.")
 
     def kill_javascript_alert(self):
         try:
@@ -286,12 +288,12 @@ class BaseApplicationHandler(ABC):
 
 # app state exceptions:
 
-class AppException(Exception):
+class ApplicationHandlerException(Exception):
     "Base taciturn app handler exception"
     pass
 
 
-class AppUnexpectedStateException(AppException):
+class ApplicationHandlerUnexpectedStateException(ApplicationHandlerException):
     "App is in an unexpected state"
     pass
 

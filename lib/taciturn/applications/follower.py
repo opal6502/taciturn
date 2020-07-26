@@ -15,12 +15,12 @@
 # along with Tactiurn.  If not, see <https://www.gnu.org/licenses/>.
 
 
-from taciturn.applications.base import AppUnexpectedStateException
+from taciturn.applications.base import ApplicationHandlerException
 
 from taciturn.applications.login import (
     LoginApplicationHandler,
-    AppEndOfListException,
-    AppUserPrivilegeSuspendedException
+    ApplicationHandlerEndOfListException,
+    ApplicationHandlerUserPrivilegeSuspendedException
 )
 
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, StaleElementReferenceException
@@ -144,12 +144,14 @@ class FollowerApplicationHandler(LoginApplicationHandler):
 
     def flist_current_locator(self):
         if self.flist_mode == 'follower':
-            locator = By.XPATH, self.flist_prefix_xpath.format('Followers', self.flist_get_position())
+            raise NotImplementedError("Each application handler class needs to implement this!")
+            # locator = By.XPATH, self.flist_prefix_xpath.format('Followers', self.flist_get_position())
         if self.flist_mode == 'following':
-            locator = By.XPATH, self.flist_prefix_xpath.format('Following', self.flist_get_position())
+            raise NotImplementedError("Each application handler class needs to implement this!")
+            # locator = By.XPATH, self.flist_prefix_xpath.format('Following', self.flist_get_position())
         else:
             locator = By.XPATH, self.flist_prefix_xpath.format(self.flist_get_position())
-        self.log.debug("flist_current_locator: {}".format(locator))
+        # self.log.debug(f"flist_current_locator: {locator}")
         return locator
 
     def flist_reset_postition(self):
@@ -273,7 +275,7 @@ class FollowerApplicationHandler(LoginApplicationHandler):
     def start_following(self, target_account, quota=None, unfollow_hiatus=None):
         "A generalized start_following method, made to be application-agnostic."
         self.log.info("Starting user following session.")
-        self.log.debug("Following quota = {}".format(quota or 'n/a'))
+        self.log.debug(f"Following quota = {quota or 'n/a'}")
         self.goto_followers_page(target_account)
 
         unfollow_hiatus = unfollow_hiatus or self.unfollow_hiatus
@@ -286,29 +288,29 @@ class FollowerApplicationHandler(LoginApplicationHandler):
             self.element_scroll_to(flist_entry, y_offset=header_overlap_y)
 
             if self.flist_is_empty(flist_entry):
-                raise AppEndOfListException("List end encountered, stopping.")
+                raise ApplicationHandlerEndOfListException("List end encountered, stopping.")
 
             # get flist info fields, skipping where possible:
             flist_username = self.flist_username(flist_entry)
             if self.in_blacklist(flist_username):
-                self.log.info("User '{}' is in blacklist, skip.".format(flist_username))
+                self.log.info(f"User '{flist_username}' is in blacklist, skip.")
                 if self.flist_is_last(flist_entry):
-                    raise AppEndOfListException("List end encountered, stopping.")
+                    raise ApplicationHandlerEndOfListException("List end encountered, stopping.")
                 flist_entry = self.flist_next(flist_entry)
                 continue
 
             flist_button_text = self.flist_button_text(flist_entry)
             if self.flist_button_is_following(flist_button_text):
-                self.log.info("User '{}' already following, skip.".format(flist_username))
+                self.log.info(f"User '{flist_username}' already following, skip.")
                 if self.flist_is_last(flist_entry):
-                    raise AppEndOfListException("List end encountered, stopping.")
+                    raise ApplicationHandlerEndOfListException("List end encountered, stopping.")
                 flist_entry = self.flist_next(flist_entry)
                 continue
 
             if self.flist_image_is_default(flist_entry):
-                self.log.info("User '{}' has no image, skip.".format(flist_username))
+                self.log.info(f"User '{flist_username}' has no image, skip.")
                 if self.flist_is_last(flist_entry):
-                    raise AppEndOfListException("List end encountered, stopping.")
+                    raise ApplicationHandlerEndOfListException("List end encountered, stopping.")
                 flist_entry = self.flist_next(flist_entry)
                 continue
 
@@ -317,10 +319,10 @@ class FollowerApplicationHandler(LoginApplicationHandler):
                                 and datetime.now() < flist_unfollowed_row.established + unfollow_hiatus
             if is_hiatus_expired:
                 time_remaining = (flist_unfollowed_row.established + unfollow_hiatus) - datetime.now()
-                self.log.info("User '{}' was followed/unfollowed too recently, can follow again after '{}'"
-                                  .format(flist_username, time_remaining))
+                self.log.info(f"User '{flist_username}' was followed/unfollowed too recently, "
+                              f"can follow again after '{time_remaining}'")
                 if self.flist_is_last(flist_entry):
-                    raise AppEndOfListException("List end encountered, stopping.")
+                    raise ApplicationHandlerEndOfListException("List end encountered, stopping.")
                 flist_entry = self.flist_next(flist_entry)
                 continue
 
@@ -340,13 +342,13 @@ class FollowerApplicationHandler(LoginApplicationHandler):
                     self.session.commit()
 
                     if self.flist_is_last(flist_entry):
-                        raise AppEndOfListException("List end encountered, stopping.")
+                        raise ApplicationHandlerEndOfListException("List end encountered, stopping.")
                     flist_entry = self.flist_next(flist_entry)
                     continue
 
                 # check for follow limit popover ...
                 if self.flist_is_action_limit_notice():
-                    raise AppUserPrivilegeSuspendedException("Following limit encountered, stopping.")
+                    raise ApplicationHandlerUserPrivilegeSuspendedException("Following limit encountered, stopping.")
 
                 # ok, try clicking follow button ...
                 self.last_action_pause()
@@ -357,24 +359,23 @@ class FollowerApplicationHandler(LoginApplicationHandler):
 
                 # check for follow blocked popover ...
                 if self.flist_is_blocked_notice():
-                    self.log.info("User '{}' blocks us, skipping ...".format(flist_username))
+                    self.log.info(f"User '{flist_username}' blocks us, skipping.")
                     if self.flist_is_last(flist_entry):
-                        raise AppEndOfListException("List end encountered, stopping.")
+                        raise ApplicationHandlerEndOfListException("List end encountered, stopping.")
                     flist_entry = self.flist_next(flist_entry)
                     continue
 
                 # check for follow limit popover ...
                 if self.flist_is_action_limit_notice():
-                    raise AppUserPrivilegeSuspendedException("Following limit encountered, stopping.")
+                    raise ApplicationHandlerUserPrivilegeSuspendedException("Following limit encountered, stopping.")
 
                 # verify that follow button indicates success:
                 try:
-                    self.log.debug("Waiting for user '{}' to be in following state."
-                                     .format(flist_username))
+                    self.log.debug(f"Waiting for user '{flist_username}' to be in following state.")
                     self.flist_button_wait_following(flist_entry)
                 except TimeoutException:
                     self.stats.one_operation_failed()
-                    raise AppUserPrivilegeSuspendedException("Following seems to be restricted.")
+                    raise ApplicationHandlerUserPrivilegeSuspendedException("Following seems to be restricted.")
 
                 # follow verified, create database entry:
 
@@ -386,7 +387,7 @@ class FollowerApplicationHandler(LoginApplicationHandler):
 
                 self.session.add(new_following_row)
                 self.session.commit()
-                self.log.info("Follow for user {} added to database.".format(flist_username))
+                self.log.info(f"Follow for user '{flist_username}' added to database.")
 
                 self.stats.one_operation_successful()
 
@@ -398,17 +399,17 @@ class FollowerApplicationHandler(LoginApplicationHandler):
                     self.session.add(new_following_row)
                     self.session.commit()
             else:
-                self.log.critical("Entry button for user '{}' says '{}'?".format(flist_username, flist_button_text))
-                raise AppUnexpectedStateException(
-                    "Entry button for user '{}' says '{}'?".format(flist_username, flist_button_text))
+                self.log.critical(f"Entry button for user '{flist_username}' says '{flist_button_text}'?")
+                raise ApplicationHandlerException(
+                    f"Entry button for user '{flist_username}' says '{flist_button_text}'?")
 
             if self.flist_is_last(flist_entry):
-                raise AppEndOfListException("List end encountered, stopping.")
+                raise ApplicationHandlerEndOfListException("List end encountered, stopping.")
             flist_entry = self.flist_next(flist_entry)
 
     def start_unfollowing(self, quota=None, follow_back_hiatus=None, mutual_expire_hiatus=None):
         self.log.info("Starting unfollow session.")
-        self.log.debug("Unfollow quota = {}".format(quota or 'n/a'))
+        self.log.debug(f"Unfollow quota = {quota or 'n/a'}")
         self.goto_following_page()
 
         follow_back_hiatus = follow_back_hiatus or self.follow_back_hiatus
@@ -424,28 +425,27 @@ class FollowerApplicationHandler(LoginApplicationHandler):
 
             # twitter end-of-list detection:
             if self.flist_is_empty(flist_entry):
-                raise AppEndOfListException("List end encountered, stopping.")
+                raise ApplicationHandlerEndOfListException("List end encountered, stopping.")
 
             # get flist info fields, skipping where possible:
             flist_username = self.flist_username(flist_entry)
 
             if self.in_whitelist(flist_username):
-                self.log.info("User '{}' is in whitelist, skipping.".format(flist_username))
+                self.log.info(f"User '{flist_username}' is in whitelist, skipping.")
                 if self.flist_is_last(flist_entry):
-                    raise AppEndOfListException("List end encountered, stopping.")
+                    raise ApplicationHandlerEndOfListException("List end encountered, stopping.")
                 flist_entry = self.flist_next(flist_entry)
                 continue
 
             flist_following_row = self.db_get_following(flist_username)
 
             if flist_following_row is None:
-                self.log.warning("No following entry for user '{}', creating record and skipping."
-                                   .format(flist_username))
+                self.log.warning(f"No following entry for user '{flist_username}', creating record and skipping.")
                 new_following = self.db_new_following(flist_username)
                 self.session.add(new_following)
                 self.session.commit()
                 if self.flist_is_last(flist_entry):
-                    raise AppEndOfListException("List end encountered, stopping.")
+                    raise ApplicationHandlerEndOfListException("List end encountered, stopping.")
                 flist_entry = self.flist_next(flist_entry)
                 continue
             else:
@@ -457,33 +457,31 @@ class FollowerApplicationHandler(LoginApplicationHandler):
 
                 if not mutual_follow_expired and follower_row:
                     time_remaining = (flist_following_row.established + mutual_expire_hiatus) - datetime.now()
-                    self.log.info("Mutual expire hiatus for user '{}' not reached: '{}' left."
-                                    .format(flist_username, time_remaining))
+                    self.log.info(f"Mutual expire hiatus for user '{flist_username}' not reached: "
+                                  f"'{time_remaining}' left.")
                     if self.flist_is_last(flist_entry):
-                        raise AppEndOfListException("List end encountered, stopping.")
+                        raise ApplicationHandlerEndOfListException("List end encountered, stopping.")
                     flist_entry = self.flist_next(flist_entry)
                     continue
                 elif not follow_back_expired:
                     time_remaining = (flist_following_row.established + follow_back_hiatus) - datetime.now()
-                    self.log.info("Follow back hiatus for user '{}' not reached: '{}' left."
-                                    .format(flist_username, time_remaining))
+                    self.log.info(f"Follow back hiatus for user '{flist_username}' not reached: "
+                                  f"'{time_remaining}' left.")
                     if self.flist_is_last(flist_entry):
-                        raise AppEndOfListException("List end encountered, stopping.")
+                        raise ApplicationHandlerEndOfListException("List end encountered, stopping.")
                     flist_entry = self.flist_next(flist_entry)
                     continue
 
                 if mutual_follow_expired and follower_row:
-                    self.log.info("Mutual follow expired for user '{}', unfollowing."
-                                    .format(flist_username))
+                    self.log.info(f"Mutual follow expired for user '{flist_username}', unfollowing.")
                 elif follow_back_expired:
-                    self.log.info("Follow expired for user '{}', unfollowing."
-                                    .format(flist_username))
+                    self.log.info(f"Follow expired for user '{flist_username}', unfollowing.")
                 else:
-                    AppUnexpectedStateException("Unfollow in unexpected state, please examine!")
+                    ApplicationHandlerException("Unfollow in unexpected state, please examine!")
 
                 # check for follow/unfollow limit popover from last action ...
                 if self.flist_is_action_limit_notice():
-                    raise AppUserPrivilegeSuspendedException("Unfollow limit encountered, stopping.")
+                    raise ApplicationHandlerUserPrivilegeSuspendedException("Unfollow limit encountered, stopping.")
 
                 self.last_action_pause()
                 self.flist_button(flist_entry).click()
@@ -497,7 +495,7 @@ class FollowerApplicationHandler(LoginApplicationHandler):
                     self.flist_button_wait_not_following(flist_entry)
                 except TimeoutException:
                     self.stats.one_operation_failed()
-                    raise AppUserPrivilegeSuspendedException("Unfollowing seems to be restricted.")
+                    raise ApplicationHandlerUserPrivilegeSuspendedException("Unfollowing seems to be restricted.")
 
                 # update database:
                 new_unfollowed_row = self.db_new_unfollowed(flist_username)
@@ -508,7 +506,7 @@ class FollowerApplicationHandler(LoginApplicationHandler):
                 self.stats.one_operation_successful()
 
             if self.flist_is_last(flist_entry):
-                raise AppEndOfListException("List end encountered, stopping.")
+                raise ApplicationHandlerEndOfListException("List end encountered, stopping.")
             flist_entry = self.flist_next(flist_entry)
 
     def update_following(self):
@@ -520,23 +518,23 @@ class FollowerApplicationHandler(LoginApplicationHandler):
 
         while True:
             if self.flist_is_empty(flist_entry):
-                raise AppEndOfListException("List end encountered, stopping.")
+                raise ApplicationHandlerEndOfListException("List end encountered, stopping.")
 
             self.element_scroll_to(flist_entry)
 
             flist_username = self.flist_username(flist_entry)
             flist_following_row = self.db_get_following(flist_username)
             if flist_following_row is None:
-                self.log.info("Adding user '{}' to following list in db.".format(flist_username))
+                self.log.info(f"Adding user '{flist_username}' to following list in db.")
                 new_following_row = self.db_new_following(flist_username)
                 self.session.add(new_following_row)
                 self.session.commit()
                 entries_added += 1
             else:
-                self.log.info("User '{}' already in following list in db.".format(flist_username))
+                self.log.info(f"User '{flist_username}' already in following list in db.")
 
             if self.flist_is_last(flist_entry):
-                raise AppEndOfListException("List end encountered, stopping.")
+                raise ApplicationHandlerEndOfListException("List end encountered, stopping.")
 
             flist_entry = self.flist_next(flist_entry)
 
@@ -549,22 +547,22 @@ class FollowerApplicationHandler(LoginApplicationHandler):
 
         while True:
             if self.flist_is_empty(flist_entry):
-                raise AppEndOfListException("List end encountered, stopping.")
+                raise ApplicationHandlerEndOfListException("List end encountered, stopping.")
 
             self.element_scroll_to(flist_entry)
 
             flist_username = self.flist_username(flist_entry)
             flist_follower_row = self.db_get_follower(flist_username)
             if flist_follower_row is None:
-                self.log.info("Adding '{}' to followers list in db.".format(flist_username))
+                self.log.info(f"Adding '{flist_username}' to followers list in db.")
                 new_follower_row = self.db_new_follower(flist_username)
                 self.session.add(new_follower_row)
                 self.session.commit()
                 entries_added += 1
             else:
-                self.log.info("User '{}' already in followers list in db.".format(flist_username))
+                self.log.info(f"User '{flist_username}' already in followers list in db.")
 
             if self.flist_is_last(flist_entry):
-                raise AppEndOfListException("List end encountered, stopping.")
+                raise ApplicationHandlerEndOfListException("List end encountered, stopping.")
 
             flist_entry = self.flist_next(flist_entry)

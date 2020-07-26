@@ -120,10 +120,30 @@ GENRE_TAGS = {
 }
 
 
-def genre_tags(genre):
-    return ' '.join(GENRE_TAGS[genre])
+class Genres:
+    @staticmethod
+    def all():
+        return sorted(GENRE_TAGS.keys())
+
+    @staticmethod
+    def all_string():
+        return ', '.join({f"'{g}'" for g in sorted(GENRE_TAGS.keys())})
+
+    @staticmethod
+    def tags_string(genre):
+        try:
+            return ' '.join(GENRE_TAGS[genre])
+        except KeyError:
+            raise GenereException(f"No such genre '{genre}'")
+
+    @staticmethod
+    def in_(genre):
+        return genre in GENRE_TAGS
+
+    @staticmethod
+    def not_in_(genre):
+        return genre not in GENRE_TAGS
 
 
-def genre_valid(genre):
-    return genre in GENRE_TAGS
-
+class GenereException(Exception):
+    pass

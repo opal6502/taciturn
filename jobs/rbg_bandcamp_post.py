@@ -20,7 +20,7 @@
 from taciturn.job import TaciturnJob
 
 from taciturn.applications.bandcamp import BandcampHandler
-from taciturn.applications.bandcamp import GENRE_TAGS
+from taciturn.applications.music import Genres
 
 from taciturn.applications.facebook import FacebookHandler
 from taciturn.applications.instagram import InstagramHandler
@@ -36,94 +36,106 @@ class RootBeerGuyJob(TaciturnJob):
     def __init__(self):
         super().__init__()
 
+        if self.options.user is None:
+            self.log.critical("You must provide a user with the '-u user' option")
+        if self.options.link is None:
+            self.log.critical("You must provide bandcamp track link with the '-l url' option")
+        if self.options.genre is None:
+            self.log.critical(f"You must provide genre name with the '-g genre' option, choose one from: "
+                              f"{Genres.all_string()}")
+
+        if (self.options.user is None or
+            self.options.link is None or
+            self.options.genre is None):
+            self.log.critical("Job: insufficient configuration.")
+            sys.exit(1)
+
         self.username = self.options.user[0]
         self.target_link = self.options.link[0]
         self.genre = self.options.genre[0]
+        self.no_instagram = self.options.noinstagram
 
-        if self.username != 'rbg':
+        is_name_correct = self.username == 'rbg'
+        is_genre_correct = Genres.in_(self.genre)
+
+        if is_name_correct:
             self.log.critical("This job is for user 'rbg' only!")
-            sys.exit(1)
-        if self.target_link is None:
-            self.log.critical("You must provide a bandcamp link with the -l flag")
-            sys.exit(1)
-        if self.genre not in GENRE_TAGS:
+        if is_genre_correct:
             self.log.critical(f"You must provide a genre with the -g flag, "
-                              f"choose one from: {', '.join(GENRE_TAGS.keys())}")
+                              f"choose one from: {Genres.all_string()}")
+
+        if not is_name_correct or not is_genre_correct:
+            self.log.critical("Job: configuration error")
             sys.exit(1)
 
-        if self.options.genre is None or self.options.genre[0] not in GENRE_TAGS:
-            raise RuntimeError("You must provide a genre with the -g flag, choose one from: {}"
-                               .format(', '.join(GENRE_TAGS.keys())))
-        self.genre = self.options.genre[0]
+        self.genre_tags = Genres.tags_string(self.genre)
+        self.help_us_string = '𝕎𝕖 𝕣𝕖𝕒𝕝𝕝𝕪 𝕟𝕖𝕖𝕕 𝕪𝕠𝕦𝕣 𝕙𝕖𝕝𝕡! ☑️ 𝕝𝕚𝕜𝕖 ☑️ 𝕔𝕠𝕞𝕞𝕖𝕟𝕥 ☑️ 𝕤𝕙𝕒𝕣𝕖'
 
     def run(self):
-        help_us_string = '𝕎𝕖 𝕣𝕖𝕒𝕝𝕝𝕪 𝕟𝕖𝕖𝕕 𝕪𝕠𝕦𝕣 𝕙𝕖𝕝𝕡! ☑️ 𝕝𝕚𝕜𝕖 ☑️ 𝕔𝕠𝕞𝕞𝕖𝕟𝕥 ☑️ 𝕤𝕙𝕒𝕣𝕖'
+        # Step 1: scrape the bandcamp track info:
 
-        bandcamp_account = self.get_account('bandcamp')
-        bandcamp_handler = BandcampHandler(bandcamp_account)
-        # just share this first-initialized driver with all app handlers:
+        self.log.info("Job: starting Bandcamp application handler.")
+
+        bandcamp_handler = BandcampHandler()
         shared_driver = bandcamp_handler.driver
 
-        # first, scan the bandcamp page:
+        parsed_track = bandcamp_handler.music_scrape_track_data(self.target_link)
 
-        parsed_track = bandcamp_handler.parse_track_from_page(self.target_link)
-        author_string = bandcamp_handler.author_string(parsed_track)
-        genre_tags = ' '.join(GENRE_TAGS[self.genre])
+        self.log.debug(f"Bandcamp track: artist = {parsed_track.artist}")
+        self.log.debug(f"Bandcamp track: title = {parsed_track.title}")
+        self.log.debug(f"Bandcamp track: album = {parsed_track.album or 'n/a'}")
+        self.log.debug(f"Bandcamp track: label = {parsed_track.label or 'n/a'}")
+        self.log.debug(f"Bandcamp track: downloaded art = {parsed_track.img_local}")
+
         img_local_path = parsed_track.img_local
+        author_string = str(parsed_track)
+        facebook_post_body = f"{author_string}\n\n{self.help_us_string}\n\n{self.genre_tags}"
+        others_post_body = f"{author_string}\n\n{self.target_link}\n\n{self.help_us_string}\n\n{self.genre_tags}"
 
-        # then, create the facebook post:
+        self.log.info("Job: track info scraped from Bandcamp.")
+
+        # Step 2: create the facebook post:
+
+        self.log.info("Job: starting Facebook application handler.")
 
         facebook_account = self.get_account('facebook')
-        facebook_handler = FacebookHandler(self.options, self.session, facebook_account, shared_driver)
-
-        facebook_post_body = "{}\n\n{}\n\n{}".format(author_string,
-                                                     help_us_string,
-                                                     genre_tags)
-
+        facebook_handler = FacebookHandler(facebook_account, driver=shared_driver)
         facebook_handler.login()
-        fb_post_link = facebook_handler.pagepost_create('RBGuy9000',
-                                                        self.target_link,
-                                                        facebook_post_body)
+        facebook_handler.page_post_create('RBGuy9000', facebook_post_body, self.target_link)
 
-        print("Made facebook post.")
+        self.log.info("Job: made Facebook post.")
+
+        # Step 3: make tweet:
+
+        self.log.info("Job: starting Twitter application handler.")
 
         twitter_account = self.get_account('twitter')
         twitter_handler = TwitterHandler(twitter_account, driver=shared_driver)
-
-        twitter_post_body = "{}\n\n{}\n\n{}\n\n{}".format(author_string,
-                                                          self.target_link,
-                                                          help_us_string,
-                                                          genre_tags)
-
         twitter_handler.login()
-        twitter_handler.post_tweet(twitter_post_body, img_local_path)
+        twitter_handler.post_tweet(others_post_body, img_local_path)
 
-        print("Made tweet.")
+        self.log.info("Job: made tweet.")
 
-        # close the shared driver:
-        shared_driver.quit()
+        self.log.debug("Job: closing shared web driver.")
+        shared_driver.quit()  # close shared driver
 
-        # then, create the instagram post, let it have its own driver and mobile user-agent:
+        # Step 4: create the instagram post, let it have its own driver and mobile user-agent:
 
-        if False:
+        if not self.no_instagram:
+            self.log.info("Job: starting Instagram application handler.")
+
             instagram_account = self.get_account('instagram')
-            instagram_handler = InstagramHandler(self.options, self.session, instagram_account)
-
-            instagram_post_body = "{}\n\n{}\n\n{}\n\n{}".format(author_string,
-                                                                self.target_link,
-                                                                help_us_string,
-                                                                genre_tags)
-
+            instagram_handler = InstagramHandler(instagram_account)
             instagram_handler.login()
-            instagram_handler.post_image(img_local_path, instagram_post_body)
+            instagram_handler.post_image(img_local_path, others_post_body)
 
-            print("Made instagram post.")
+            self.log.info("Job: made Instagram post.")
 
             instagram_handler.quit()
+        else:
+            self.log.warning("Job: skipping Instagram post")
 
-            print("Made a full Root Beer Guy post!")
-
-        print("Made a partial Root Beer Guy post!")
+        self.log.info("Job: made a Root Beer Guy post!")
 
 
-job = RootBeerGuyJob()
+job = RootBeerGuyJob

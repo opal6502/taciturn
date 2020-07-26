@@ -23,7 +23,7 @@ import os
 
 from taciturn.config import get_config, get_options, init_logger, get_logger, get_session
 from taciturn.db.base import User, Application, AppAccount, JobId
-from taciturn.applications.login import AppEndOfListException, AppUserPrivilegeSuspendedException
+from taciturn.applications.login import ApplicationHandlerEndOfListException, ApplicationHandlerUserPrivilegeSuspendedException
 
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
@@ -48,7 +48,7 @@ class TaciturnJob(ABC):
         self.log = init_logger(self.job_name())
         self._load_accounts()
 
-        self.log.info('Initializing taciturn job #{}.'.format(self._job_number))
+        self.log.info(f"Initializing taciturn job #{self._job_number}.")
 
     def job_name(self):
         return '{}.{}'.format(self.__jobname__, self._job_number)
@@ -151,7 +151,7 @@ class TaskExecutor:
         for try_n in range(1, self.retries + 1):
             self.retry = try_n
             try:
-                self.log.info("Task: starting try {} of {}".format(try_n, self.retries))
+                self.log.info(f"Task: starting try {try_n} of {self.retries}")
                 self.call()
             except KeyboardInterrupt:
                 self.log.exception("Task: incomplete: cancelled by keyboard interrupt.")
@@ -165,17 +165,16 @@ class TaskExecutor:
                 self.log.exception("Task: incomplete: cancelled by system error.")
                 self.log_report(incomplete=True)
                 sys.exit(1)
-            except AppEndOfListException:
+            except ApplicationHandlerEndOfListException:
                 self.log.info("Task: end of list encountered.")
                 break
-            except AppUserPrivilegeSuspendedException:
+            except ApplicationHandlerUserPrivilegeSuspendedException:
                 self.log.warning("Task: incomplete: user privileges revoked by application.")
                 self.take_screenshot()
                 self.log_report(incomplete=True)
                 return
             except Exception as e:
-                self.log.exception("Task: failed: try {} of {}; exception occurred: {}"
-                                      .format(try_n, self.retries, e))
+                self.log.exception(f"Task: failed: try {try_n} of {self.retries}; exception occurred.")
                 self.take_screenshot()
                 if try_n >= self.retries:
                     self.log_report(incomplete=True)
@@ -183,8 +182,7 @@ class TaskExecutor:
             else:
                 break
         else:
-            self.log.error('Task: Failed after {} tries.'
-                              .format(try_n))
+            self.log.error(f"Task: Failed after {try_n} tries.")
 
         self.total_time += time() - self.task_start_time
         self.operations_total += self.handler_stats.get_operation_count()
@@ -193,29 +191,26 @@ class TaskExecutor:
 
     def log_report(self, incomplete=False):
         if incomplete is True:
-            self.log.info("Task: incomplete: operations = {}; failures = {}; "
-                          "start_time = '{}'; end_time = '{}'; task_time = '{}';"
-                          .format(self.handler_stats.get_operation_count(),
-                                  self.retry-1,
-                                  datetime.fromtimestamp(self.task_start_time),
-                                  datetime.now(),
-                                  timedelta(seconds=self.total_time+(time() - self.task_start_time))))
+            self.log.info(f"Task: incomplete: "
+                          f"operations = {self.handler_stats.get_operation_count()}; "
+                          f"failures = {self.retry-1}; "
+                          f"start_time = '{datetime.fromtimestamp(self.task_start_time)}'; "
+                          f"end_time = '{datetime.now()}'; "
+                          f"task_time = '{timedelta(seconds=self.total_time+(time() - self.task_start_time))}';")
             self.log.info("Task: interrupted.")
         else:
-            self.log.info("Task: complete: operations = {}; failures = {}; "
-                          "start_time = '{}'; end_time = '{}'; task_time = '{}';"
-                          .format(self.handler_stats.get_operation_count(),
-                                  self.retry-1,
-                                  datetime.fromtimestamp(self.task_start_time),
-                                  datetime.now(),
-                                  timedelta(seconds=self.total_time)))
+            self.log.info(f"Task: complete: "
+                          f"operations = {self.handler_stats.get_operation_count()}; "
+                          f"failures = {self.retry-1}; "
+                          f"start_time = '{datetime.fromtimestamp(self.task_start_time)}'; "
+                          f"end_time = '{datetime.now()}'; "
+                          f"task_time = '{timedelta(seconds=self.total_time)}';")
             self.log.info("Task: finished.")
 
     def take_screenshot(self):
-        screenshot_filename = os.path.join(self.config['screenshots_dir'],
-                                           '{}.{}.png'.format(self.job_name, self.screenshot_n))
+        screenshot_filename = os.path.join(self.config['screenshots_dir'], f'{self.job_name}.{self.screenshot_n}.png')
         self.driver.save_screenshot(screenshot_filename)
-        self.log.info("Saved screenshot at {}".format(screenshot_filename))
+        self.log.info(f"Saved screenshot at {screenshot_filename}")
         self.screenshot_n += 1
 
 
@@ -241,6 +236,7 @@ class RoundTaskExecutor(TaskExecutor):
         self.round_retries = 0
         self.total_rounds = self.max // self.quota
         self.task_timeout = self.period.total_seconds() / self.total_rounds
+        self.task_sleep_start = None
 
         self.round_stats = RoundExecutorStats()
 
@@ -248,14 +244,14 @@ class RoundTaskExecutor(TaskExecutor):
         try_n = 0   # for use in loop else clause
 
         for round_n in range(1, self.total_rounds+1):
-            self.log.info("Task: starting round {} of {}.".format(round_n, self.total_rounds))
-            self.log.info("Task: timeout between rounds is {}.".format(timedelta(seconds=self.task_timeout)))
+            self.log.info(f"Task: starting round {round_n} of {self.total_rounds}.")
+            self.log.info(f"Task: timeout between rounds is {timedelta(seconds=self.task_timeout)}.")
             self.task_start_time = time()
             self.round_retries = 0
 
             for try_n in range(1, self.retries+1):
                 try:
-                    self.log.info("Task: starting try {} of {}.".format(try_n, self.retries))
+                    self.log.info(f"Task: starting try {try_n} of {self.retries}.")
                     self.call()
                 except KeyboardInterrupt:
                     self.log.exception("Task: cancelled by keyboard interrupt.")
@@ -269,17 +265,17 @@ class RoundTaskExecutor(TaskExecutor):
                     self.log.exception("Task: incomplete: cancelled by system error.")
                     self.log_report(incomplete=True)
                     sys.exit(1)
-                except AppEndOfListException:
+                except ApplicationHandlerEndOfListException:
                     self.log.info("Task: end of list encountered.")
                     break
-                except AppUserPrivilegeSuspendedException:
+                except ApplicationHandlerUserPrivilegeSuspendedException:
                     self.log.warning("Task: incomplete: user privileges revoked by application.")
                     self.take_screenshot()
                     self.log_report(incomplete=True)
                     return
                 except Exception as e:
-                    self.log.exception("Task: round {} of {} failed, try {} of {}; exception occurred: {}"
-                                          .format(round_n, self.total_rounds, try_n, self.retries, str(e)))
+                    self.log.exception(f"Task: round {round_n} of {self.total_rounds} failed, "
+                                       f"try {try_n} of {self.retries}; exception occurred.")
                     self.take_screenshot()
                     self.round_retries += 1
                     if try_n >= self.retries:
@@ -288,8 +284,7 @@ class RoundTaskExecutor(TaskExecutor):
                 else:
                     break
             else:
-                self.log.error("Task: Round {} of {} failed after {} tries."
-                                    .format(round_n, self.total_rounds, try_n))
+                self.log.error(f"Task: Round {round_n} of {self.total_rounds} failed after {try_n} tries.")
                 self.failed_rounds += 1
 
             task_time = time() - self.task_start_time
@@ -303,15 +298,14 @@ class RoundTaskExecutor(TaskExecutor):
             self.operations_total += operation_count
 
             if operation_count < self.quota:
-                self.log.warning("Task: couldn't fulfill quota; expected {} operations, actual {}."
-                                   .format(self.quota, operation_count))
+                self.log.warning(f"Task: couldn't fulfill quota; "
+                                 f"expected {self.quota} operations, actual {operation_count}.")
                 if self.stop_no_quota:
                     self.log.warning("Quota unfulfilled, stopping.")
                     self.log_report(incomplete=True)
                     sys.exit(1)
             elif operation_count == self.max:
-                self.log.info("Task: round complete with {} operations."
-                        .format(operation_count))
+                self.log.info(f"Task: round complete with {operation_count} operations.")
 
             self.round_stats.add_round(operations=operation_count,
                                        failures=try_n-1,
@@ -324,8 +318,8 @@ class RoundTaskExecutor(TaskExecutor):
             if round_n >= self.total_rounds or self.operations_total >= self.max:
                 break
 
-            self.log.info("Task: sleeping for {} until next round."
-                             .format(timedelta(seconds=task_sleep_time)))
+            self.log.info(f"Task: sleeping for {timedelta(seconds=task_sleep_time)} until next round.")
+
             try:
                 self.task_sleep_start = time()
                 sleep(task_sleep_time)
@@ -364,10 +358,12 @@ class RoundTaskExecutor(TaskExecutor):
             total_task_time += round.task_time
             total_sleep_time += round.task_sleep_time
             total_job_time += round.task_time + round.task_sleep_time
-        round_n += 1
         if incomplete is True:
+            round_n += 1
             task_time = timedelta(seconds=self.total_time+(time() - self.task_start_time))
-            sleep_time = timedelta(seconds=(time() - self.task_sleep_start))
+            sleep_time = 0
+            if self.task_sleep_start is not None:
+                sleep_time = timedelta(seconds=(time() - self.task_sleep_start))
             self.log.info(f"Task: incomplete round #{round_n}: "
                           f"operations = {self.handler_stats.get_operation_count()}; "
                           f"failures = {self.round_retries}; "
