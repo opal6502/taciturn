@@ -15,32 +15,21 @@
 # along with Tactiurn.  If not, see <https://www.gnu.org/licenses/>.
 
 
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.common.exceptions import TimeoutException, StaleElementReferenceException
-
-from sqlalchemy import and_
-
-from taciturn.applications.base import ApplicationHandlerUnexpectedStateException
-from taciturn.applications.follower import FollowerApplicationHandler
-
-from taciturn.db.followers import (
-    Follower,
-    Following,
-    Unfollowed
-)
-
-from taciturn.db.base import (
-    User,
-    Application,
-)
-
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import NoSuchElementException
-
-from datetime import datetime
 from time import sleep
+
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+
+from selenium.webdriver.common.action_chains import ActionChains
+
+from selenium.common.exceptions import (
+    TimeoutException,
+    StaleElementReferenceException,
+    NoSuchElementException
+)
+
+from taciturn.applications.base import ApplicationHandlerException
+from taciturn.applications.follower import FollowerApplicationHandler
 
 
 class SoundcloudHandler(FollowerApplicationHandler):
@@ -164,10 +153,10 @@ class SoundcloudHandler(FollowerApplicationHandler):
             header_profile_menu_profile_link_locator = (By.XPATH, '//*[starts-with(@id,"dropdown-button-")]'
                                                                   '/div/ul[1]/li[1]/a[text()="Profile"]')
             header_profile_menu_element = self.new_wait()\
-                .until(EC.presence_of_element_located(header_profile_menu_locator))
+                .until(EC.element_to_be_clickable(header_profile_menu_locator))
             self.element_scroll_to(header_profile_menu_element)
             header_profile_menu_element.click()
-            self.new_wait().until(EC.presence_of_element_located(header_profile_menu_profile_link_locator))\
+            self.new_wait().until(EC.element_to_be_clickable(header_profile_menu_profile_link_locator))\
                 .click()
         else:
             self.driver.get(f'{self.application_url}/{user_name}')
@@ -177,7 +166,7 @@ class SoundcloudHandler(FollowerApplicationHandler):
             self.goto_profile_page()
             profile_following_link_locator = (By.XPATH, '//*[@id="content"]/div/div[4]/div[2]/div/article[1]'
                                                         '/table/tbody/tr/td[2]/a/h3[text()="Following"]')
-            self.new_wait().until(EC.presence_of_element_located(profile_following_link_locator))\
+            self.new_wait().until(EC.element_to_be_clickable(profile_following_link_locator))\
                 .click()
         else:
             self.driver.get(f'{self.application_url}/{user_name}/following')
@@ -187,7 +176,7 @@ class SoundcloudHandler(FollowerApplicationHandler):
             self.goto_profile_page()
             profile_followers_link_locator = (By.XPATH, '//*[@id="content"]/div/div[4]/div[2]/div/article[1]'
                                                         '/table/tbody/tr/td[1]/a/h3[text()="Followers"]')
-            self.new_wait().until(EC.presence_of_element_located(profile_followers_link_locator))\
+            self.new_wait().until(EC.element_to_be_clickable(profile_followers_link_locator))\
                 .click()
         else:
             self.driver.get(f'{self.application_url}/{user_name}/followers')
@@ -248,7 +237,7 @@ class SoundcloudHandler(FollowerApplicationHandler):
 
     def flist_button(self, flist_entry):
         locator = (By.XPATH, './div/div[3]/button')
-        button_element = self.new_wait(flist_entry).until(EC.presence_of_element_located(locator))
+        button_element = self.new_wait(flist_entry).until(EC.element_to_be_clickable(locator))
         ActionChains(self.driver).move_to_element(button_element).perform()
         return button_element
     
@@ -270,7 +259,7 @@ class SoundcloudHandler(FollowerApplicationHandler):
             if blocked_text.startswith(blocked_text):
                 return True
             else:
-                raise ApplicationHandlerUnexpectedStateException(f"Got unexpected text from blocked notice: '{blocked_text}'")
+                raise ApplicationHandlerException(f"Got unexpected text from blocked notice: '{blocked_text}'")
         except (StaleElementReferenceException, TimeoutException, NoSuchElementException):
             return False
 

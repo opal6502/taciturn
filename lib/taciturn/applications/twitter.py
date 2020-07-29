@@ -16,9 +16,14 @@
 
 
 from selenium.webdriver.common.by import By
-from selenium.common.exceptions import TimeoutException, NoSuchElementException, StaleElementReferenceException
-from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support import expected_conditions as EC
+
+from selenium.common.exceptions import (
+    TimeoutException,
+    NoSuchElementException,
+    StaleElementReferenceException
+)
 
 from taciturn.applications.follower import FollowerApplicationHandler
 
@@ -322,14 +327,14 @@ class TwitterHandler(FollowerApplicationHandler):
         locator = (By.XPATH, './div/div/div/div[2]/div[1]/div[1]/a/div/div[1]/div[2]/'
                              '*[local-name()="svg" and @aria-label="Verified account"]')
         try:
-            self.new_wait(timeout=0).until(EC.presence_of_element_located(locator))
+            self.driver.find_element(*locator)
             return True
-        except TimeoutException:
+        except (NoSuchElementException, TimeoutException):
             return False
 
     def flist_button(self, flist_entry):
         locator = (By.XPATH, './div/div/div/div[2]/div/div[2]/div/div/span/span')
-        return self.new_wait(flist_entry).until(EC.presence_of_element_located(locator))
+        return self.new_wait(flist_entry).until(EC.element_to_be_clickable(locator))
 
     def flist_button_text(self, flist_entry):
         return self.flist_button(flist_entry).text
@@ -346,8 +351,8 @@ class TwitterHandler(FollowerApplicationHandler):
         if popover is None:
             return False
         popover_text = popover.text
-        if popover_text is not None \
-                and popover_text == 'You have been blocked from following this user at their request.':
+        if (popover_text is not None and
+                popover_text == 'You have been blocked from following this user at their request.'):
             # halt and wait until the blocked notice disappers, so it doesn't confuse us later:
             self.new_wait().until(EC.staleness_of(popover))
             return True
@@ -358,8 +363,8 @@ class TwitterHandler(FollowerApplicationHandler):
         if popover is None:
             return False
         popover_text = popover.text
-        if popover_text is not None \
-                and popover_text == 'You are unable to follow more people at this time.':
+        if (popover_text is not None and
+                popover_text == 'You are unable to follow more people at this time.'):
             return True
         return False
 

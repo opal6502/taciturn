@@ -14,10 +14,16 @@
 # You should have received a copy of the GNU General Public License
 # along with Tactiurn.  If not, see <https://www.gnu.org/licenses/>.
 
-from taciturn.job import TaciturnJob, RoundTaskExecutor, ApplicationHandlerStats
-from taciturn.applications.instagram import InstagramHandler
 
 import sys
+
+from taciturn.applications.instagram import InstagramHandler
+
+from taciturn.job import (
+    TaciturnJob,
+    RoundTaskExecutor,
+    ApplicationHandlerStats
+)
 
 
 class InstagramFollowJob(TaciturnJob):

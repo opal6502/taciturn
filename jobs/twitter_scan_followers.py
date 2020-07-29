@@ -15,8 +15,13 @@
 # along with Tactiurn.  If not, see <https://www.gnu.org/licenses/>.
 
 
-from taciturn.job import TaciturnJob, TaskExecutor, ApplicationHandlerStats
 from taciturn.applications.twitter import TwitterHandler
+
+from taciturn.job import (
+    TaciturnJob,
+    TaskExecutor,
+    ApplicationHandlerStats
+)
 
 
 class TwitterScanFollowersJob(TaciturnJob):

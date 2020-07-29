@@ -15,8 +15,13 @@
 # along with Tactiurn.  If not, see <https://www.gnu.org/licenses/>.
 
 
-from taciturn.job import TaciturnJob, TaskExecutor, ApplicationHandlerStats
 from taciturn.applications.soundcloud import SoundcloudHandler
+
+from taciturn.job import (
+    TaciturnJob,
+    TaskExecutor,
+    ApplicationHandlerStats
+)
 
 
 class SoundcloudScanFollowingJob(TaciturnJob):

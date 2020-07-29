@@ -16,44 +16,11 @@
 # along with Tactiurn.  If not, see <https://www.gnu.org/licenses/>.
 
 
-from sqlalchemy import and_
-
-import argparse
 import sys
-from getpass import getpass
-from datetime import datetime
+import argparse
 
-from taciturn.config import set_options, get_session
+from taciturn.config import set_options
 from taciturn.job import TaciturnJobLoader
-
-from taciturn.db.base import (
-    Application,
-    User
-)
-
-# features to do with the CLI now:
-#  - application commands:
-#    - add application
-#    - add user to application
-#    - display whitelist
-#    - add to whitelist
-#    - display blacklist
-#    - add to blacklist
-#    - display followers, following, unfollow
-#    - clear followers, following, unfollow for a user
-# In the future:
-#  - queue commands:
-#    - list, add, delete - from a queue
-#    - list all active queues
-#  - job commands:
-#    - run a job with command line config
-
-command_job_choices = ['whitelist', 'blacklist', 'followers', 'following', 'unfollowed']
-command_admin_choices = ['application', 'user']
-command_verb_choices = ['list', 'add', 'delete', 'password']
-command_verb_arg_required = ['add', 'delete']
-command_verb_default = 'list'
-all_command_choices = command_job_choices + command_admin_choices
 
 
 def run_job(job_name):
@@ -62,98 +29,6 @@ def run_job(job_name):
     job.run()
 
 
-def cmd_application(verb, arg=None):
-    "Handle the application command"
-    session = get_session()
-    if verb == 'list':
-        # list applications ...
-        print('-'*72)
-        print('Applications')
-        print('-'*72)
-        for a in session.query(Application).order_by(Application.name):
-            print(' ', a.id, '\t', a.name, '\t', a.established)
-    # XXX implement the other verbs, too!
-    else:
-        raise NotImplementedError("This needs to be written!!")
-
-
-def cmd_user(verb, arg=None, application=None):
-    "Handle the user command"
-    session = get_session()
-    if verb == 'list':
-        # list applications ...
-        print('-'*72)
-        print('Users')
-        print('-'*72)
-        if session.query(User, Application).filter(Application.id == User.application_id).count() == 0:
-            print('*** No users ***')
-            return
-        for u, a in session.query(User, Application).filter(Application.id == User.application_id).order_by(User.name):
-            print(' ', u.id, '\t', u.name, '\t', a.name, '\t', u.established)
-
-    elif verb == 'add':
-        if application is None:
-            raise TypeError("Application must be specified when adding a new user (-n) flag")
-        if session.query(User)\
-            .filter(and_(User.name == arg,
-                         Application.name == application,
-                         Application.id == User.application_id)).count() != 0:
-            print(f"User with name '{arg}' for application already exists.", file=sys.stderr)
-            sys.exit(1)
-        app = session.query(Application).filter_by(name=application).one()
-
-        password1 = getpass(f'Password for {arg}: ')
-        password2 = getpass(f'Password for {arg}: ')
-        if password1 != password1:
-            print("Passwords do not match.")
-            return
-
-        new_user = User(name=arg, password=password1, application_id=app.id, established=datetime.now())
-
-        session.add(new_user)
-        session.commit()
-        print(f"Added user '{new_user.name}' to '{app.name}'.")
-
-    elif verb == 'delete':
-        if application is None:
-            raise TypeError("Application must be specified when deleting new user (-n) flag")
-
-        user = session.query(User).filter(and_(User.name == arg,
-                                           Application.name == application,
-                                           Application.id == User.application_id)).one_or_none()
-        if user is None:
-            print(f"No user '{arg}' for application '{application}' found", file=sys.stderr)
-            sys.exit(1)
-        session.delete(user)
-        session.commit()
-        print("Deleted user '{}' from '{}'.".format(user.name, application))
-
-    elif verb == 'password':
-        user = session.query(User).filter(and_(User.name == arg,
-                                           Application.name == application,
-                                           Application.id == User.application_id)).one_or_none()
-        if user is None:
-            print(f"No user '{arg}' for application '{application}' found", file=sys.stderr)
-            sys.exit(1)
-        password1 = getpass(f'Password for {arg}: ')
-        password2 = getpass(f'Password for {arg}: ')
-
-        if password1 != password1:
-            print("Passwords do not match.")
-            return
-
-        user.password = password1
-        session.commit()
-        print(f"Password updated for '{user.name}' from '{application}'.")
-
-
-admin_dispatcher = {
-    'application': cmd_application,
-    'user': cmd_user
-}
-
-
-# parse arguments:
 def parse_arguments(args=None):
     if args is None:
         args = sys.argv[1:]
@@ -182,7 +57,6 @@ def parse_arguments(args=None):
     ap.add_argument('-I', '--noinstagram', action='store_true',
                     help="Do not post to instagram, for the 'rbg_bandcamp_post' job")
 
-    # parse arguments:
     pa = ap.parse_args(args)
 
     return pa

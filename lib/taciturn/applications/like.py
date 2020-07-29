@@ -15,9 +15,9 @@
 # along with Tactiurn.  If not, see <https://www.gnu.org/licenses/>.
 
 
-from taciturn.applications.login import LoginApplicationHandler
-
 from abc import abstractmethod
+
+from taciturn.applications.login import LoginApplicationHandler
 
 
 class LikeApplicationHandler(LoginApplicationHandler):

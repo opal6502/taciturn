@@ -15,6 +15,17 @@
 # along with Tactiurn.  If not, see <https://www.gnu.org/licenses/>.
 
 
+from abc import abstractmethod
+
+from datetime import datetime
+from time import time
+
+from selenium.common.exceptions import TimeoutException, NoSuchElementException, StaleElementReferenceException
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+
+from sqlalchemy import and_
+
 from taciturn.applications.base import ApplicationHandlerException
 
 from taciturn.applications.login import (
@@ -23,21 +34,11 @@ from taciturn.applications.login import (
     ApplicationHandlerUserPrivilegeSuspendedException
 )
 
-from selenium.common.exceptions import TimeoutException, NoSuchElementException, StaleElementReferenceException
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support import expected_conditions as EC
-
 from taciturn.db.followers import (
     Follower,
     Following,
     Unfollowed
 )
-
-from sqlalchemy import and_
-
-from abc import abstractmethod
-from datetime import datetime
-from time import time
 
 
 class FollowerApplicationHandler(LoginApplicationHandler):
@@ -122,17 +123,23 @@ class FollowerApplicationHandler(LoginApplicationHandler):
                                    locator=None,
                                    timeout=60,
                                    text=False,
+                                   clickable=False,
                                    get_attribute=None):
 
         end_time = time() + timeout
         while True:
             try:
-                if get_attribute is not None:
-                    return flist_entry.find_element(*locator).get_attribute(get_attribute)
-                elif text is True:
-                    return flist_entry.find_element(*locator).text
+                if clickable is True:
+                    element = self.new_wait(flist_entry, timeout=0.5).until(EC.element_to_be_clickable(locator))
                 else:
-                    return flist_entry.find_element(*locator)
+                    element = flist_entry.find_element(*locator)
+
+                if get_attribute is not None:
+                    return element.get_attribute(get_attribute)
+                elif text is True:
+                    return element.text
+                else:
+                    return element
             except StaleElementReferenceException:
                 flist_entry = self.new_wait()\
                     .until(EC.presence_of_element_located(self.flist_current_locator()))
@@ -237,7 +244,7 @@ class FollowerApplicationHandler(LoginApplicationHandler):
         return flist_button_text in self.button_text_not_following
 
     def flist_button_wait_following(self, flist_entry):
-        self.log.debug("Waiting for entry to be in following state.")
+        # self.log.debug("Waiting for entry to be in following state.")
         # self.log.debug("self.button_text_following = {}".format(self.button_text_following))
 
         def _button_text_in_following(d):
@@ -255,7 +262,7 @@ class FollowerApplicationHandler(LoginApplicationHandler):
         return self.new_wait(timeout=90).until(_button_text_in_following)
 
     def flist_button_wait_not_following(self, flist_entry):
-        self.log.debug("Waiting for entry to be in non-following state.")
+        # self.log.debug("Waiting for entry to be in non-following state.")
         # self.log.debug("self.button_text_not_following = {}".format(self.button_text_not_following))
 
         def _button_text_in_not_following(d):
@@ -299,7 +306,16 @@ class FollowerApplicationHandler(LoginApplicationHandler):
                 flist_entry = self.flist_next(flist_entry)
                 continue
 
-            flist_button_text = self.flist_button_text(flist_entry)
+            # an flist entry may not have a button:
+            try:
+                flist_button_text = self.flist_button_text(flist_entry)
+            except TimeoutException:
+                self.log.warning(f"Entry for '{flist_username}' has no follow button, skip.")
+                if self.flist_is_last(flist_entry):
+                    raise ApplicationHandlerEndOfListException("List end encountered, stopping.")
+                flist_entry = self.flist_next(flist_entry)
+                continue
+
             if self.flist_button_is_following(flist_button_text):
                 self.log.info(f"User '{flist_username}' already following, skip.")
                 if self.flist_is_last(flist_entry):
@@ -492,6 +508,7 @@ class FollowerApplicationHandler(LoginApplicationHandler):
                     unfollow_confirm_button.click()
 
                 try:
+                    self.log.debug(f"Waiting for user '{flist_username}' to be in non-following state.")
                     self.flist_button_wait_not_following(flist_entry)
                 except TimeoutException:
                     self.stats.one_operation_failed()

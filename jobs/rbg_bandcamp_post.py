@@ -17,16 +17,16 @@
 # this is the job used to automate RBGuy9000 posts!
 
 
+import sys
+
 from taciturn.job import TaciturnJob
 
-from taciturn.applications.bandcamp import BandcampHandler
 from taciturn.applications.music import Genres
 
+from taciturn.applications.bandcamp import BandcampHandler
 from taciturn.applications.facebook import FacebookHandler
 from taciturn.applications.instagram import InstagramHandler
 from taciturn.applications.twitter import TwitterHandler
-
-import sys
 
 
 class RootBeerGuyJob(TaciturnJob):
@@ -58,9 +58,9 @@ class RootBeerGuyJob(TaciturnJob):
         is_name_correct = self.username == 'rbg'
         is_genre_correct = Genres.in_(self.genre)
 
-        if is_name_correct:
+        if not is_name_correct:
             self.log.critical("This job is for user 'rbg' only!")
-        if is_genre_correct:
+        if not is_genre_correct:
             self.log.critical(f"You must provide a genre with the -g flag, "
                               f"choose one from: {Genres.all_string()}")
 

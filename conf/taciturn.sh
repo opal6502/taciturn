@@ -15,29 +15,35 @@
 # along with Tactiurn.  If not, see <https://www.gnu.org/licenses/>.
 
 
-# environment for running Taciturn stuff!
+TACITURN_PROJECT_ROOT=/Users/johnk/PycharmProjects/Taciturn
+TACITURN_ROOT=$TACITURN_PROJECT_ROOT/Taciturn
+
+TACITURN_PYTHON_LIB=$TACITURN_ROOT/lib
+
+TACITURN_VENV=$TACITURN_PROJECT_ROOT/venv
+TACITURN_VENV_ACTIVATE=$TACITURN_VENV/bin/activate
 
 WEBDRIVER_BIN=/Users/johnk/bin
-PYTHON_LIB_PREFIX=/Users/johnk/PycharmProjects/Taciturn/Taciturn/lib
-FIREFOX_DRIVER=$WEBDRIVER_BIN/geckodriver
-CHROME_DRIVER=$WEBDRIVER_BIN/chromedriver
-TACITURN_ROOT=/Users/johnk/PycharmProjects/Taciturn/Taciturn
+
+
+if [[ ! -z "$TACITURN_VENV_ACTIVATE" ]]; then
+  echo "Activating venv at '$TACITURN_VENV_ACTIVATE'"
+  source $TACITURN_VENV_ACTIVATE
+fi
 
 if [[ ! -z "$WEBDRIVER_BIN" ]]; then
   echo "Adding webdriver path '$WEBDRIVER_BIN' to path."
   PATH=$WEBDRIVER_BIN:$PATH
 fi
 
-if [[ ! -z "$PYTHONPATH" ]]; then
-  echo "Adding taciturn path '$PYTHON_LIB_PREFIX' to python path."
-  PYTHONPATH=$PYTHON_LIB_PREFIX:$PYTHONPATH
-else
-  PYTHONPATH=$PYTHON_LIB_PREFIX
+if [[ ! -z "$TACITURN_PYTHON_LIB" ]]; then
+  echo "Adding taciturn path '$TACITURN_PYTHON_LIB' to python path."
+  PYTHONPATH=$TACITURN_PYTHON_LIB:$PYTHONPATH
 fi
+
 
 export PATH
 export PYTHONPATH
 export FIREFOX_DRIVER
 export CHROME_DRIVER
 export TACITURN_ROOT
-

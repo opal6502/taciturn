@@ -58,10 +58,15 @@
 #  -- add or delete blacklist entry
 
 
-# eventually it might be nice to collect stats!
+import sys
+
+from getpass import getpass
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
+
+from taciturn.config import get_config
 
 from taciturn.db.base import (
     Application,
@@ -70,12 +75,6 @@ from taciturn.db.base import (
     Whitelist,
     Blacklist
 )
-
-from taciturn.config import get_config
-
-from getpass import getpass
-from datetime import datetime
-import sys
 
 config = get_config()
 engine = config['database_engine']

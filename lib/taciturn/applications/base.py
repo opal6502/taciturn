@@ -15,28 +15,32 @@
 # along with Tactiurn.  If not, see <https://www.gnu.org/licenses/>.
 
 
-from taciturn.config import get_config, get_options, get_logger, get_session
+import os
+import sys
+from abc import ABC
 
-from selenium.webdriver import Chrome, Firefox, Remote
+from time import time, sleep
+from datetime import datetime
+
+from http.cookiejar import MozillaCookieJar
+import urllib.parse
+
+from io import BytesIO
+from hashlib import sha256
+
 from selenium import webdriver
-
+from selenium.webdriver import Chrome, Firefox, Remote
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, StaleElementReferenceException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-from abc import ABC
-
-# for default image compare processing:
 from PIL import Image, ImageChops
 import requests
-from io import BytesIO
 
-import os, sys
-import urllib.parse
-from time import time, sleep
-from datetime import datetime, timedelta
-from hashlib import sha256
-from http.cookiejar import MozillaCookieJar
+from taciturn.config import get_config, get_options, get_logger, get_session
+
+
+FILE_DOWNLOAD_RETRIES=10
 
 
 class BaseApplicationHandler(ABC):
@@ -137,7 +141,7 @@ class BaseApplicationHandler(ABC):
             self.driver.get_cookie({'name': c.name, 'value': c.value})
 
     def quit(self):
-        self.log.info("Quitting.")
+        self.log.info("Quitting: quitting webdriver and closing db session.")
         self.driver.quit()
         self.session.close()
         del self.driver
@@ -167,7 +171,7 @@ class BaseApplicationHandler(ABC):
         else:
             return os.path.join(self.assets_dir, 'application', self.application_name, file_name)
 
-    def temp_download_file(self, file_url, prefix=None, retries=10):
+    def temp_download_file(self, file_url, prefix=None, retries=FILE_DOWNLOAD_RETRIES):
         # properly parse the url and get the extension:
         parsed_link = urllib.parse.urlparse(file_url)
         parsed_path, parsed_ext = os.path.splitext(parsed_link.path)
@@ -189,17 +193,18 @@ class BaseApplicationHandler(ABC):
         for try_n in range(1, retries+1):
             try:
                 image_request = requests.get(file_url, stream=True)
-            except requests.exceptions.ConnectionError as e:
+                if image_request.status_code == 200:
+                    with open(filename_with_path, 'wb') as f:
+                        for chunk in image_request:
+                            f.write(chunk)
+                else:
+                    raise ConnectionError(f"Got unexpected response code: {image_request.status_code}")
+            except (requests.exceptions.ConnectionError, ConnectionError) as e:
+                self.log.exception(f"Exception occurred while downloading image. (try {try_n} of {retries})")
                 if try_n >= retries:
                     raise e
+                sleep(60)
                 continue
-
-        if image_request.status_code == 200:
-            with open(filename_with_path, 'wb') as f:
-                for chunk in image_request:
-                    f.write(chunk)
-        else:
-            raise ConnectionError(f"Got unexpected response code: {image_request.status_code}")
 
         return filename_with_path
 
@@ -209,8 +214,8 @@ class BaseApplicationHandler(ABC):
             self._asset_path_prefix(self.default_profile_image))
 
     def image_cmp(self, image1_url_or_path, image2_url_or_path):
-        image1_file = self.open_image_file_or_url(image1_url_or_path)
-        image2_file = self.open_image_file_or_url(image2_url_or_path)
+        image1_file = self.open_image_url_or_file(image1_url_or_path)
+        image2_file = self.open_image_url_or_file(image2_url_or_path)
 
         try:
             if ImageChops.difference(image1_file, image2_file).getbbox():
@@ -219,7 +224,7 @@ class BaseApplicationHandler(ABC):
             return False
         return True
 
-    def open_image_file_or_url(self, image_url_or_path, retries=10):
+    def open_image_url_or_file(self, image_url_or_path, retries=FILE_DOWNLOAD_RETRIES):
         for try_n in range(1, retries+1):
             try:
                 response = requests.get(image_url_or_path)
@@ -230,8 +235,8 @@ class BaseApplicationHandler(ABC):
                                    f"'{image_url_or_path}', try {try_n} of {retries}.")
                 if try_n >= retries:
                     raise e
-                else:
-                    continue
+                sleep(60)
+                continue
             except (requests.exceptions.MissingSchema, requests.exceptions.URLRequired):
                 # try url as path:
                 return Image.open(image_url_or_path)
@@ -291,9 +296,3 @@ class BaseApplicationHandler(ABC):
 class ApplicationHandlerException(Exception):
     "Base taciturn app handler exception"
     pass
-
-
-class ApplicationHandlerUnexpectedStateException(ApplicationHandlerException):
-    "App is in an unexpected state"
-    pass
-

@@ -15,9 +15,9 @@
 # along with Tactiurn.  If not, see <https://www.gnu.org/licenses/>.
 
 
-from taciturn.applications.base import BaseApplicationHandler
-
 from abc import abstractmethod
+
+from taciturn.applications.base import BaseApplicationHandler
 
 
 class MusicScrapingHandler(BaseApplicationHandler):

@@ -15,6 +15,14 @@
 # along with Tactiurn.  If not, see <https://www.gnu.org/licenses/>.
 
 
+from time import sleep
+import urllib.parse
+
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+
 from selenium.common.exceptions import (
     TimeoutException,
     NoSuchElementException,
@@ -22,17 +30,9 @@ from selenium.common.exceptions import (
     ElementClickInterceptedException
 )
 
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.webdriver.common.by import By
-from selenium.webdriver.common.keys import Keys
-
 from taciturn.applications.base import ApplicationHandlerException
 from taciturn.applications.login import LoginApplicationHandler
 
-from time import sleep
-import urllib.parse
 
 FACEBOOK_ACTION_RETRIES=10
 
@@ -152,7 +152,7 @@ class FacebookHandler(LoginApplicationHandler):
             try:
                 new_post_button_locator = (By.XPATH, '//*[starts-with(@id,"mount")]//div[@aria-label="Create Post"]'
                                                      '//span[text()="Create Post"]')
-                new_post_button_element = post_wait.until(EC.presence_of_element_located(new_post_button_locator))
+                new_post_button_element = post_wait.until(EC.element_to_be_clickable(new_post_button_locator))
 
                 self._page_element_rescroll(new_post_button_element)
 
@@ -192,7 +192,7 @@ class FacebookHandler(LoginApplicationHandler):
         # do new post:
         for try_n in range(1, retries+1):
             try:
-                self.log.info(f"Submit new Facebook page post: creating new. (try {try_n} of {retries}).")
+                self.log.info(f"Submit new Facebook page post: creating new.")
 
                 self._page_post_start_new()
                 post_input = self._page_post_input()
@@ -233,11 +233,13 @@ class FacebookHandler(LoginApplicationHandler):
         for try_n in range(1, retries+1):
             new_first_post = self._page_post_get_first()
             new_first_post_link = self._page_post_get_link(new_first_post)
-            self.log.debug(f"Verify new Facebook page post: "
-                           f"new link different from previous: '{new_first_post_link}' != '{previous_first_post_link}'")
+            # self.log.debug(f"Verify new Facebook page post: "
+            #                f"new link different from previous: '{new_first_post_link}' != '{previous_first_post_link}'")
             if new_first_post_link != previous_first_post_link:
+                self.log.info("Verify new Facebook page post: new post verified present.")
                 return new_first_post_link
-            sleep(10)
+            # sleep(10)
+            self.log.info("Verify new Facebook page post: new post not verified present, refreshing.")
             self.driver.refresh()
 
         raise ApplicationHandlerException(f"New page post didn't show up after {retries} tries.")
@@ -250,4 +252,5 @@ class FacebookHandler(LoginApplicationHandler):
         page_post_first_link = self._page_post_get_link(page_post_first)
 
         self._page_post_submit_new(post_body, post_link)
+        # self.driver.refresh()
         return self._page_post_verify_new(page_post_first_link)

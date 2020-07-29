@@ -19,19 +19,15 @@
 
 import os
 
+
 if 'TACITURN_ROOT' not in os.environ:
     raise RuntimeError("Environment variable TACITURN_ROOT must be defined.")
 
 taciturn_root = os.environ['TACITURN_ROOT']
 
-# application settings:
-# 'daily_max_follows': total follows per day
-# 'round_max_follows': max followers per round, before sleeping
-# 'daily_max_unfollows': total unfollows per day
-# ''
 
 site_config = {
-    'default_site_config1': 'foo_site',
+    # 'default_site_config1': 'foo_site',
 
     # 'app:*': {
     #     'some_dir': os.path.join(taciturn_root, 'some_dir')
@@ -40,16 +36,4 @@ site_config = {
     #     'daily_max_unfollows': 200,
     #     'round_max_unfollows': 50,
     # },
-    'app:twitter': {
-        'daily_max_follows': 400,
-        'round_max_follows': 100,
-        'daily_max_unfollows': 400,
-        'round_max_unfollows': 100,
-    },
-    'app:instagram': {
-        'daily_max_follows': 400,
-        'round_max_follows': 100,
-        'daily_max_unfollows': 400,
-        'round_max_unfollows': 100,
-    }
 }

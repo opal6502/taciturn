@@ -14,10 +14,16 @@
 # You should have received a copy of the GNU General Public License
 # along with Tactiurn.  If not, see <https://www.gnu.org/licenses/>.
 
-from taciturn.job import TaciturnJob, RoundTaskExecutor, ApplicationHandlerStats
-from taciturn.applications.soundcloud import SoundcloudHandler
 
 import sys
+
+from taciturn.applications.soundcloud import SoundcloudHandler
+
+from taciturn.job import (
+    TaciturnJob,
+    RoundTaskExecutor,
+    ApplicationHandlerStats
+)
 
 
 class SoundcloudFollowJob(TaciturnJob):

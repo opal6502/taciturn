@@ -25,6 +25,7 @@ from itertools import chain
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import create_engine
 
+
 if 'TACITURN_ROOT' not in os.environ:
     raise RuntimeError("Environment variable TACITURN_ROOT must be defined.")
 

@@ -16,7 +16,7 @@
 # along with Tactiurn.  If not, see <https://www.gnu.org/licenses/>.
 
 
-# initializes the db!
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 
@@ -25,20 +25,9 @@ from taciturn.config import get_config, supported_applications
 from taciturn.db.base import (
     ORMBase,
     Application,
-    User,
-    AppAccount,
-    Blacklist,
-    Whitelist,
     JobId
 )
 
-from taciturn.db.followers import (
-    Follower,
-    Following,
-    Unfollowed
-)
-
-from datetime import datetime
 
 print('> Taciturn database init script!')
 

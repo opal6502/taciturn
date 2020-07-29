@@ -15,23 +15,25 @@
 # along with Tactiurn.  If not, see <https://www.gnu.org/licenses/>.
 
 
-# interface to taciturn jobs!
-
-from importlib.machinery import SourceFileLoader
-from abc import ABC, abstractmethod
+import sys
 import os
+
+from abc import ABC, abstractmethod
+from collections import namedtuple
+from importlib.machinery import SourceFileLoader
+
+from datetime import timedelta, datetime
+from time import sleep, time
+
+from sqlalchemy import and_
 
 from taciturn.config import get_config, get_options, init_logger, get_logger, get_session
 from taciturn.db.base import User, Application, AppAccount, JobId
-from taciturn.applications.login import ApplicationHandlerEndOfListException, ApplicationHandlerUserPrivilegeSuspendedException
 
-from sqlalchemy import and_
-from sqlalchemy.orm import Session
-
-from collections import namedtuple
-from datetime import timedelta, datetime
-from time import sleep, time
-import sys
+from taciturn.applications.login import (
+    ApplicationHandlerEndOfListException,
+    ApplicationHandlerUserPrivilegeSuspendedException
+)
 
 
 class TaciturnJob(ABC):
@@ -51,7 +53,7 @@ class TaciturnJob(ABC):
         self.log.info(f"Initializing taciturn job #{self._job_number}.")
 
     def job_name(self):
-        return '{}.{}'.format(self.__jobname__, self._job_number)
+        return f'{self.__jobname__}.{self._job_number}'
 
     def _new_job_number(self):
         job_id_row = self.session.query(JobId).filter_by(id=1).one()
@@ -63,7 +65,7 @@ class TaciturnJob(ABC):
     def _load_accounts(self):
         self.log.info("Loading accounts for job.")
 
-        # some input validation for self.__appnames__
+        # some input validation for self.__appnames__:
         if self.__appnames__ is None and not isinstance(self.__appnames__, list):
             raise TypeError('Job needs to define self.__appnames__ as a list of apps the job interacts with')
         if self.options.user is None:
@@ -361,7 +363,7 @@ class RoundTaskExecutor(TaskExecutor):
         if incomplete is True:
             round_n += 1
             task_time = timedelta(seconds=self.total_time+(time() - self.task_start_time))
-            sleep_time = 0
+            sleep_time = timedelta(seconds=0)
             if self.task_sleep_start is not None:
                 sleep_time = timedelta(seconds=(time() - self.task_sleep_start))
             self.log.info(f"Task: incomplete round #{round_n}: "
@@ -381,9 +383,9 @@ class RoundTaskExecutor(TaskExecutor):
                       f"total_rounds = {round_n}; "
                       f"total_operations = {total_operations}; "
                       f"total_failures = {total_failures}; "
-                      f"total_task_time = {total_task_time}; "
-                      f"total_sleep_time = {total_sleep_time}; "
-                      f"total_job_time = {total_job_time};")
+                      f"total_task_time = '{total_task_time}'; "
+                      f"total_sleep_time = '{total_sleep_time}'; "
+                      f"total_job_time = '{total_job_time}';")
 
         if incomplete is True:
             self.log.info("Task: interrupted.")

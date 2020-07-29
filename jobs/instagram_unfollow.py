@@ -15,8 +15,13 @@
 # along with Tactiurn.  If not, see <https://www.gnu.org/licenses/>.
 
 
-from taciturn.job import TaciturnJob, TaskExecutor, RoundTaskExecutor, ApplicationHandlerStats
 from taciturn.applications.instagram import InstagramHandler
+
+from taciturn.job import (
+    TaciturnJob,
+    RoundTaskExecutor,
+    ApplicationHandlerStats
+)
 
 
 class InstagramUnfollowJob(TaciturnJob):
