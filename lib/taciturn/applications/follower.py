@@ -17,7 +17,6 @@
 
 from abc import abstractmethod
 
-from datetime import datetime
 from time import time
 
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, StaleElementReferenceException
@@ -27,6 +26,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from sqlalchemy import and_
 
 from taciturn.applications.base import ApplicationHandlerException
+from taciturn.datetime import datetime_now_tz
 
 from taciturn.applications.login import (
     LoginApplicationHandler,
@@ -80,41 +80,41 @@ class FollowerApplicationHandler(LoginApplicationHandler):
     def db_get_unfollowed(self, flist_username):
         return self.session.query(Unfollowed)\
                 .filter(and_(Unfollowed.name == flist_username,
-                             Unfollowed.user_id == self.app_account.user_id,
+                             Unfollowed.taciturn_user_id == self.app_account.taciturn_user_id,
                              Unfollowed.application_id == self.app_account.application_id,
                         )).one_or_none()
 
     def db_get_follower(self, flist_username):
         return self.session.query(Follower)\
                 .filter(and_(Follower.name == flist_username,
-                             Follower.user_id == self.app_account.user_id,
+                             Follower.taciturn_user_id == self.app_account.taciturn_user_id,
                              Follower.application_id == self.app_account.application_id,
                         )).one_or_none()
 
     def db_get_following(self, flist_username):
         return self.session.query(Following)\
                 .filter(and_(Following.name == flist_username,
-                             Following.user_id == self.app_account.user_id,
+                             Following.taciturn_user_id == self.app_account.taciturn_user_id,
                              Following.application_id == self.app_account.application_id,
                         )).one_or_none()
 
     def db_new_following(self, flist_username):
         return Following(name=flist_username,
-                         established=datetime.now(),
+                         established=datetime_now_tz(),
                          application_id=self.app_account.application_id,
-                         user_id=self.app_account.user_id)
+                         taciturn_user_id=self.app_account.taciturn_user_id)
 
     def db_new_unfollowed(self, flist_username):
         return Unfollowed(name=flist_username,
-                          established=datetime.now(),
+                          established=datetime_now_tz(),
                           application_id=self.app_account.application_id,
-                          user_id=self.app_account.user_id)
+                          taciturn_user_id=self.app_account.taciturn_user_id)
 
     def db_new_follower(self, flist_username):
         return Follower(name=flist_username,
-                        established=datetime.now(),
+                        established=datetime_now_tz(),
                         application_id=self.app_account.application_id,
-                        user_id=self.app_account.user_id)
+                        taciturn_user_id=self.app_account.taciturn_user_id)
 
     # Follower list 'flist' processing methods:
 
@@ -332,9 +332,9 @@ class FollowerApplicationHandler(LoginApplicationHandler):
 
             flist_unfollowed_row = self.db_get_unfollowed(flist_username)
             is_hiatus_expired = flist_unfollowed_row is not None \
-                                and datetime.now() < flist_unfollowed_row.established + unfollow_hiatus
+                                and datetime_now_tz() < flist_unfollowed_row.established + unfollow_hiatus
             if is_hiatus_expired:
-                time_remaining = (flist_unfollowed_row.established + unfollow_hiatus) - datetime.now()
+                time_remaining = (flist_unfollowed_row.established + unfollow_hiatus) - datetime_now_tz()
                 self.log.info(f"User '{flist_username}' was followed/unfollowed too recently, "
                               f"can follow again after '{time_remaining}'")
                 if self.flist_is_last(flist_entry):
@@ -468,11 +468,11 @@ class FollowerApplicationHandler(LoginApplicationHandler):
                 # get follower_row, can be None if user doesn't follow us:
                 follower_row = self.db_get_follower(flist_username)
 
-                follow_back_expired = datetime.now() > (flist_following_row.established + follow_back_hiatus)
-                mutual_follow_expired = datetime.now() > (flist_following_row.established + mutual_expire_hiatus)
+                follow_back_expired = datetime_now_tz() > (flist_following_row.established + follow_back_hiatus)
+                mutual_follow_expired = datetime_now_tz() > (flist_following_row.established + mutual_expire_hiatus)
 
                 if not mutual_follow_expired and follower_row:
-                    time_remaining = (flist_following_row.established + mutual_expire_hiatus) - datetime.now()
+                    time_remaining = (flist_following_row.established + mutual_expire_hiatus) - datetime_now_tz()
                     self.log.info(f"Mutual expire hiatus for user '{flist_username}' not reached: "
                                   f"'{time_remaining}' left.")
                     if self.flist_is_last(flist_entry):
@@ -480,7 +480,7 @@ class FollowerApplicationHandler(LoginApplicationHandler):
                     flist_entry = self.flist_next(flist_entry)
                     continue
                 elif not follow_back_expired:
-                    time_remaining = (flist_following_row.established + follow_back_hiatus) - datetime.now()
+                    time_remaining = (flist_following_row.established + follow_back_hiatus) - datetime_now_tz()
                     self.log.info(f"Follow back hiatus for user '{flist_username}' not reached: "
                                   f"'{time_remaining}' left.")
                     if self.flist_is_last(flist_entry):

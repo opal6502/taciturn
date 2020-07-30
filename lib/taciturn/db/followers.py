@@ -15,7 +15,7 @@
 # along with Tactiurn.  If not, see <https://www.gnu.org/licenses/>.
 
 
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Sequence
 from sqlalchemy.orm import relationship
 
 from taciturn.db.base import ORMBase
@@ -25,12 +25,12 @@ class Follower(ORMBase):
     "Accounts that follow us!"
     __tablename__ = 'follower'
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, Sequence('follower_id_seq'), primary_key=True)
     application_id = Column(Integer, ForeignKey('application.id'))
-    application = relationship('Application', backref='followers_for_user')
+    application = relationship('Application', backref='followers_for_taciturn_user')
 
-    user_id = Column(Integer, ForeignKey('user.id'))
-    user = relationship('User', backref='followers')
+    taciturn_user_id = Column(Integer, ForeignKey('taciturn_user.id'))
+    taciturn_user = relationship('TaciturnUser', backref='followers')
 
     established = Column(DateTime, nullable=False)
     name = Column(String(100), nullable=False)
@@ -40,11 +40,11 @@ class Following(ORMBase):
     "Accounts we are following!"
     __tablename__ = 'following'
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, Sequence('following_id_seq'), primary_key=True)
     application_id = Column(Integer, ForeignKey('application.id'))
-    application = relationship('Application', backref='following_for_user')
-    user_id = Column(Integer, ForeignKey('user.id'))
-    user = relationship('User', backref='following')
+    application = relationship('Application', backref='following_for_taciturn_user')
+    taciturn_user_id = Column(Integer, ForeignKey('taciturn_user.id'))
+    taciturn_user = relationship('TaciturnUser', backref='following')
 
     established = Column(DateTime, nullable=False)
     name = Column(String(100), nullable=False)
@@ -54,13 +54,11 @@ class Unfollowed(ORMBase):
     "Accounts that have been followed once already, then unfollowed!"
     __tablename__ = 'unfollowed'
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, Sequence('unfollowed_id_seq'), primary_key=True)
     application_id = Column(Integer, ForeignKey('application.id'))
-    application = relationship('Application', backref='unfollowed_for_user')
-    user_id = Column(Integer, ForeignKey('user.id'))
-    user = relationship('User', backref='unfollowed')
+    application = relationship('Application', backref='unfollowed_for_taciturn_user')
+    taciturn_user_id = Column(Integer, ForeignKey('taciturn_user.id'))
+    taciturn_user = relationship('TaciturnUser', backref='unfollowed')
 
     established = Column(DateTime, nullable=False)
     name = Column(String(100), nullable=False)
-
-

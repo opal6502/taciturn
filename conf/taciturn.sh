@@ -32,12 +32,12 @@ if [[ ! -z "$TACITURN_VENV_ACTIVATE" ]]; then
 fi
 
 if [[ ! -z "$WEBDRIVER_BIN" ]]; then
-  echo "Adding webdriver path '$WEBDRIVER_BIN' to path."
+  echo "Adding webdriver executable path '$WEBDRIVER_BIN' to path."
   PATH=$WEBDRIVER_BIN:$PATH
 fi
 
 if [[ ! -z "$TACITURN_PYTHON_LIB" ]]; then
-  echo "Adding taciturn path '$TACITURN_PYTHON_LIB' to python path."
+  echo "Adding taciturn library dir '$TACITURN_PYTHON_LIB' to python path."
   PYTHONPATH=$TACITURN_PYTHON_LIB:$PYTHONPATH
 fi
 

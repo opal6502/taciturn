@@ -237,7 +237,7 @@ class SoundcloudHandler(FollowerApplicationHandler):
 
     def flist_button(self, flist_entry):
         locator = (By.XPATH, './div/div[3]/button')
-        button_element = self.new_wait(flist_entry).until(EC.element_to_be_clickable(locator))
+        button_element = self.new_wait(flist_entry).until(EC.presence_of_element_located(locator))
         ActionChains(self.driver).move_to_element(button_element).perform()
         return button_element
     

@@ -61,16 +61,16 @@
 import sys
 
 from getpass import getpass
-from datetime import datetime
 
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 
 from taciturn.config import get_config
+from taciturn.datetime import datetime_now_tz
 
 from taciturn.db.base import (
     Application,
-    User,
+    TaciturnUser,
     AppAccount,
     Whitelist,
     Blacklist
@@ -108,7 +108,7 @@ def add_app(app_name):
         print(f"App '{app_name}' already exists.", file=sys.stderr)
         return False
 
-    new_app = Application(name=app_name, established=datetime.now())
+    new_app = Application(name=app_name, established=datetime_now_tz())
     session.add(new_app)
     session.commit()
 
@@ -136,9 +136,9 @@ def list_users(user_name=None):
     users = None
 
     if user_name is None:
-        users = session.query(User)
+        users = session.query(TaciturnUser)
     elif user_name is not None:
-        users = session.query(User).filter(User.name == user_name)
+        users = session.query(TaciturnUser).filter(TaciturnUser.name == user_name)
 
     print('-'*72)
     print(' Users:')
@@ -153,11 +153,11 @@ def list_users(user_name=None):
 
 
 def add_user(user_name):
-    if session.query(User).filter(User.name == user_name).count() > 0:
+    if session.query(TaciturnUser).filter(TaciturnUser.name == user_name).count() > 0:
         print(f"User '{user_name}' already exists.", file=sys.stderr)
         return False
 
-    new_app = User(name=user_name, established=datetime.now())
+    new_app = TaciturnUser(name=user_name, established=datetime_now_tz())
     session.add(new_app)
     session.commit()
 
@@ -167,7 +167,7 @@ def add_user(user_name):
 
 
 def delete_user(user_name):
-    app = session.query(User).filter(User.name == user_name).one_or_none()
+    app = session.query(TaciturnUser).filter(TaciturnUser.name == user_name).one_or_none()
 
     if app is None:
         print(f"User '{user_name}' does not exist.", file=sys.stderr)
@@ -185,7 +185,7 @@ def list_user_accounts(user_name, app_name=None, account_name=None):
     accounts = None
     app = None
 
-    user = session.query(User).filter_by(name=user_name).one_or_none()
+    user = session.query(TaciturnUser).filter_by(name=user_name).one_or_none()
     if app_name is not None:
         app = session.query(Application).filter_by(name=app_name).one_or_none()
 
@@ -200,16 +200,16 @@ def list_user_accounts(user_name, app_name=None, account_name=None):
         return False
 
     if app_name is None and account_name is None:
-        accounts = session.query(User, AppAccount).filter(AppAccount.user_id == User.id)
+        accounts = session.query(TaciturnUser, AppAccount).filter(AppAccount.taciturn_user_id == TaciturnUser.id)
     elif app_name is not None and account_name is None:
-        accounts = session.query(User, AppAccount).filter(and_(Application.name == app_name,
-                                                               AppAccount.user_id == User.id,
-                                                               AppAccount.application_id == Application.id))
+        accounts = session.query(TaciturnUser, AppAccount).filter(and_(Application.name == app_name,
+                                                                       AppAccount.taciturn_user_id == TaciturnUser.id,
+                                                                       AppAccount.application_id == Application.id))
     elif app_name is not None and account_name is not None:
-        accounts = session.query(User, AppAccount).filter(and_(AppAccount.name == account_name,
-                                                               Application.name == app_name,
-                                                               AppAccount.user_id == User.id,
-                                                               AppAccount.application_id == Application.id))
+        accounts = session.query(TaciturnUser, AppAccount).filter(and_(AppAccount.name == account_name,
+                                                                       Application.name == app_name,
+                                                                       AppAccount.taciturn_user_id == TaciturnUser.id,
+                                                                       AppAccount.application_id == Application.id))
 
     # print('-'*72)
 
@@ -242,17 +242,17 @@ def list_user_accounts(user_name, app_name=None, account_name=None):
 
 
 def add_user_account(user_name, app_name, account_name):
-    account = session.query(User, AppAccount).filter(and_(AppAccount.name == account_name,
-                                                          Application.name == app_name,
-                                                          AppAccount.user_id == User.id,
-                                                          AppAccount.application_id == Application.id)).one_or_none()
+    account = session.query(TaciturnUser, AppAccount).filter(and_(AppAccount.name == account_name,
+                                                                  Application.name == app_name,
+                                                                  AppAccount.taciturn_user_id == TaciturnUser.id,
+                                                                  AppAccount.application_id == Application.id)).one_or_none()
     if account is not None:
         print(f"Account '{account_name}' already exists for '{user_name}' on app '{app_name}'",
              file=sys.stderr)
         return False
 
     app = session.query(Application).filter_by(name=app_name).one_or_none()
-    user = session.query(User).filter_by(name=user_name).one_or_none()
+    user = session.query(TaciturnUser).filter_by(name=user_name).one_or_none()
     if app is None and user is None:
         print(f"No such user '{user_name}', no such app '{app_name}'.", file=sys.stderr)
         return False
@@ -267,9 +267,9 @@ def add_user_account(user_name, app_name, account_name):
 
     new_account = AppAccount(name=account_name,
                              password=account_password,
-                             established=datetime.now(),
+                             established=datetime_now_tz(),
                              application_id=app.id,
-                             user_id=user.id)
+                             taciturn_user_id=user.id)
     session.add(new_account)
     session.commit()
 
@@ -280,7 +280,7 @@ def add_user_account(user_name, app_name, account_name):
 def delete_user_account(user_name, app_name, account_name):
     account = session.query(AppAccount).filter(and_(AppAccount.name == account_name,
                                                     Application.name == app_name,
-                                                    AppAccount.user_id == User.id,
+                                                    AppAccount.taciturn_user_id == TaciturnUser.id,
                                                     AppAccount.application_id == Application.id)).one_or_none()
     if account is None:
         print(f"No account '{account_name}' for user '{user_name}' on app '{app_name}'", file=sys.stderr)
@@ -296,7 +296,7 @@ def delete_user_account(user_name, app_name, account_name):
 def password_user_account(user_name, app_name, account_name):
     account = session.query(AppAccount).filter(and_(AppAccount.name == account_name,
                                                     Application.name == app_name,
-                                                    AppAccount.user_id == User.id,
+                                                    AppAccount.taciturn_user_id == TaciturnUser.id,
                                                     AppAccount.application_id == Application.id)).one_or_none()
     if account is None:
         print(f"No account '{account_name}' for user '{user_name}' on app '{app_name}'", file=sys.stderr)
@@ -313,17 +313,17 @@ def password_user_account(user_name, app_name, account_name):
 
 def list_whitelist(user_name, app_name, entry_name=None):
     if entry_name is not None:
-        entries = session.query(Whitelist, Application, User)\
+        entries = session.query(Whitelist, Application, TaciturnUser)\
                         .filter(and_(Whitelist.name == entry_name,
-                                     User.name == user_name,
+                                     TaciturnUser.name == user_name,
                                      Application.name == app_name,
-                                     User.id == Whitelist.user_id,
+                                     TaciturnUser.id == Whitelist.taciturn_user_id,
                                      Application.id == Whitelist.application_id))
     else:
-        entries = session.query(Whitelist, Application, User)\
-                        .filter(and_(User.name == user_name,
+        entries = session.query(Whitelist, Application, TaciturnUser)\
+                        .filter(and_(TaciturnUser.name == user_name,
                                      Application.name == app_name,
-                                     User.id == Whitelist.user_id,
+                                     TaciturnUser.id == Whitelist.taciturn_user_id,
                                      Application.id == Whitelist.application_id))
 
     print('-' * 72)
@@ -345,9 +345,9 @@ def list_whitelist(user_name, app_name, entry_name=None):
 def add_to_whitelist(user_name, app_name, entry_name):
     entry = session.query(Whitelist) \
         .filter(and_(Whitelist.name == entry_name,
-                     User.name == user_name,
+                     TaciturnUser.name == user_name,
                      Application.name == app_name,
-                     User.id == Whitelist.user_id,
+                     TaciturnUser.id == Whitelist.taciturn_user_id,
                      Application.id == Whitelist.application_id))\
         .one_or_none()
     if entry is not None:
@@ -355,7 +355,7 @@ def add_to_whitelist(user_name, app_name, entry_name):
         return False
 
     app = session.query(Application).filter_by(name=app_name).one_or_none()
-    user = session.query(User).filter_by(name=user_name).one_or_none()
+    user = session.query(TaciturnUser).filter_by(name=user_name).one_or_none()
     if app is None and user is None:
         print(f"No such user '{user_name}', no such app '{app_name}'.", file=sys.stderr)
         return False
@@ -367,8 +367,8 @@ def add_to_whitelist(user_name, app_name, entry_name):
         return False
 
     new_whitelist_entry = Whitelist(name=entry_name,
-                                    established=datetime.now(),
-                                    user_id=user.id,
+                                    established=datetime_now_tz(),
+                                    taciturn_user_id=user.id,
                                     application_id=app.id)
     session.add(new_whitelist_entry)
     session.commit()
@@ -379,7 +379,7 @@ def add_to_whitelist(user_name, app_name, entry_name):
 
 def delete_from_whitelist(user_name, app_name, entry_name):
     app = session.query(Application).filter_by(name=app_name).one_or_none()
-    user = session.query(User).filter_by(name=user_name).one_or_none()
+    user = session.query(TaciturnUser).filter_by(name=user_name).one_or_none()
     if app is None and user is None:
         print(f"No such user '{user_name}', no such app '{app_name}'.", file=sys.stderr)
         return False
@@ -392,9 +392,9 @@ def delete_from_whitelist(user_name, app_name, entry_name):
 
     entry = session.query(Whitelist)\
         .filter(and_(Whitelist.name == entry_name,
-                     User.name == user_name,
+                     TaciturnUser.name == user_name,
                      Application.name == app_name,
-                     User.id == Whitelist.user_id,
+                     TaciturnUser.id == Whitelist.taciturn_user_id,
                      Application.id == Whitelist.application_id))\
         .one_or_none()
 
@@ -411,17 +411,17 @@ def delete_from_whitelist(user_name, app_name, entry_name):
 
 def list_blacklist(user_name, app_name, entry_name=None):
     if entry_name is not None:
-        entries = session.query(Blacklist, Application, User)\
+        entries = session.query(Blacklist, Application, TaciturnUser)\
                         .filter(and_(Blacklist.name == entry_name,
-                                     User.name == user_name,
+                                     TaciturnUser.name == user_name,
                                      Application.name == app_name,
-                                     User.id == Blacklist.user_id,
+                                     TaciturnUser.id == Blacklist.taciturn_user_id,
                                      Application.id == Blacklist.application_id))
     else:
-        entries = session.query(Blacklist, Application, User)\
-                        .filter(and_(User.name == user_name,
+        entries = session.query(Blacklist, Application, TaciturnUser)\
+                        .filter(and_(TaciturnUser.name == user_name,
                                      Application.name == app_name,
-                                     User.id == Blacklist.user_id,
+                                     TaciturnUser.id == Blacklist.taciturn_user_id,
                                      Application.id == Blacklist.application_id))
 
     print('-' * 72)
@@ -443,9 +443,9 @@ def list_blacklist(user_name, app_name, entry_name=None):
 def add_to_blacklist(user_name, app_name, entry_name):
     entry = session.query(Blacklist) \
         .filter(and_(Blacklist.name == entry_name,
-                     User.name == user_name,
+                     TaciturnUser.name == user_name,
                      Application.name == app_name,
-                     User.id == Blacklist.user_id,
+                     TaciturnUser.id == Blacklist.taciturn_user_id,
                      Application.id == Blacklist.application_id))\
         .one_or_none()
     if entry is not None:
@@ -453,7 +453,7 @@ def add_to_blacklist(user_name, app_name, entry_name):
         return False
 
     app = session.query(Application).filter_by(name=app_name).one_or_none()
-    user = session.query(User).filter_by(name=user_name).one_or_none()
+    user = session.query(TaciturnUser).filter_by(name=user_name).one_or_none()
     if app is None and user is None:
         print(f"No such user '{user_name}', no such app '{app_name}'.", file=sys.stderr)
         return False
@@ -465,8 +465,8 @@ def add_to_blacklist(user_name, app_name, entry_name):
         return False
 
     new_blacklist_entry = Blacklist(name=entry_name,
-                                    established=datetime.now(),
-                                    user_id=user.id,
+                                    established=datetime_now_tz(),
+                                    taciturn_user_id=user.id,
                                     application_id=app.id)
     session.add(new_blacklist_entry)
     session.commit()
@@ -477,7 +477,7 @@ def add_to_blacklist(user_name, app_name, entry_name):
 
 def delete_from_blacklist(user_name, app_name, entry_name):
     app = session.query(Application).filter_by(name=app_name).one_or_none()
-    user = session.query(User).filter_by(name=user_name).one_or_none()
+    user = session.query(TaciturnUser).filter_by(name=user_name).one_or_none()
     if app is None and user is None:
         print(f"No such user '{user_name}', no such app '{app_name}'.", file=sys.stderr)
         return False
@@ -490,9 +490,9 @@ def delete_from_blacklist(user_name, app_name, entry_name):
 
     entry = session.query(Blacklist)\
         .filter(and_(Blacklist.name == entry_name,
-                     User.name == user_name,
+                     TaciturnUser.name == user_name,
                      Application.name == app_name,
-                     User.id == Blacklist.user_id,
+                     TaciturnUser.id == Blacklist.taciturn_user_id,
                      Application.id == Blacklist.application_id))\
         .one_or_none()
 

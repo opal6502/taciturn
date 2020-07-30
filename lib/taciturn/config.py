@@ -18,6 +18,7 @@
 import os
 from importlib.machinery import SourceFileLoader
 import datetime
+import pytz
 import copy
 import logging
 from itertools import chain
@@ -31,11 +32,14 @@ if 'TACITURN_ROOT' not in os.environ:
 
 taciturn_root = os.environ['TACITURN_ROOT']
 
+
 default_config = {
     'taciturn_root': taciturn_root,
     'cookie_dir': os.path.join(taciturn_root, 'cookies'),
     'screenshots_dir': os.path.join(taciturn_root, 'screenshots'),
     'assets_dir': os.path.join(taciturn_root, 'assets'),
+
+    'temp_file_ttl': datetime.timedelta(days=7),
 
     'log_dir': os.path.join(taciturn_root, 'log'),
     'log_individual_jobs': True,
@@ -43,17 +47,21 @@ default_config = {
     'log_level': logging.DEBUG,
     'log_format': '%(asctime)s - {job_name} - %(levelname)s - %(message)s',
 
-    'database_url': 'sqlite:///' + os.path.join(taciturn_root, 'db', 'taciturn.sqlite'),
-    'orm_connect_args': {'timeout': 60},
+    # 'database_url': 'sqlite:///' + os.path.join(taciturn_root, 'db', 'taciturn.sqlite'),
+    'database_url': 'postgresql+psycopg2://taciturn:T4C1TVR^^^N@localhost/taciturn',
+    #'orm_connect_args': {'timeout': 60},
 
     'asset_root': os.path.join(taciturn_root, 'assets'),
 
     'day_length': datetime.timedelta(hours=8),
+    'timezone': pytz.timezone('America/Los_Angeles'),
 
     # selenium webdriver type:  'chrome', 'chrome_headless', 'firefox', 'firefox_headless'
     'selenium_webdriver': 'chrome_headless',
 
     'app:*': {
+        # default values for all applications:
+
         'daily_max_follows': 400,
         'round_max_follows': 100,
         'daily_max_unfollows': 400,
@@ -87,10 +95,10 @@ default_config = {
         'round_max_unfollows': 200,
     },
     'app:soundcloud': {
-        'daily_max_follows': 40,
-        'round_max_follows': 40,
-        'daily_max_unfollows': 40,
-        'round_max_unfollows': 40,
+        'daily_max_follows': 50,
+        'round_max_follows': 50,
+        'daily_max_unfollows': 50,
+        'round_max_unfollows': 50,
     },
 }
 

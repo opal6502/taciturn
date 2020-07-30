@@ -18,17 +18,20 @@
 import sys
 import os
 
+import signal
+
 from abc import ABC, abstractmethod
 from collections import namedtuple
 from importlib.machinery import SourceFileLoader
 
-from datetime import timedelta, datetime
+from datetime import timedelta
 from time import sleep, time
 
 from sqlalchemy import and_
 
 from taciturn.config import get_config, get_options, init_logger, get_logger, get_session
-from taciturn.db.base import User, Application, AppAccount, JobId
+from taciturn.db.base import TaciturnUser, Application, AppAccount, JobId
+from taciturn.datetime import datetime_now_tz, datetime_fromtimestamp_tz
 
 from taciturn.applications.login import (
     ApplicationHandlerEndOfListException,
@@ -79,8 +82,8 @@ class TaciturnJob(ABC):
         for app_name in self.__appnames__:
             app_account = self.session.query(AppAccount).\
                 filter(and_(AppAccount.application_id == Application.id,
-                            AppAccount.user_id == User.id,
-                            User.name == self.username,
+                            AppAccount.taciturn_user_id == TaciturnUser.id,
+                            TaciturnUser.name == self.username,
                             Application.name == app_name
                             )).one_or_none()
             if app_account is None:
@@ -146,6 +149,13 @@ class TaskExecutor:
         self.retry = 0
         self.screenshot_n = 0
 
+        # handler SIGTERM, which Jenkins will send to stop a process:
+        signal.signal(signal.SIGTERM, self._signal_handler_report_exit)
+
+    def _signal_handler_report_exit(self, signum, frame):
+        self.log_report(incomplete=True)
+        sys.exit(1)
+
     def run(self):
         try_n = 0
         self.task_start_time = time()
@@ -196,16 +206,16 @@ class TaskExecutor:
             self.log.info(f"Task: incomplete: "
                           f"operations = {self.handler_stats.get_operation_count()}; "
                           f"failures = {self.retry-1}; "
-                          f"start_time = '{datetime.fromtimestamp(self.task_start_time)}'; "
-                          f"end_time = '{datetime.now()}'; "
+                          f"start_time = '{datetime_fromtimestamp_tz(self.task_start_time)}'; "
+                          f"end_time = '{datetime_now_tz()}'; "
                           f"task_time = '{timedelta(seconds=self.total_time+(time() - self.task_start_time))}';")
-            self.log.info("Task: interrupted.")
+            self.log.info("Task: stopped prematurely.")
         else:
             self.log.info(f"Task: complete: "
                           f"operations = {self.handler_stats.get_operation_count()}; "
                           f"failures = {self.retry-1}; "
-                          f"start_time = '{datetime.fromtimestamp(self.task_start_time)}'; "
-                          f"end_time = '{datetime.now()}'; "
+                          f"start_time = '{datetime_fromtimestamp_tz(self.task_start_time)}'; "
+                          f"end_time = '{datetime_now_tz()}'; "
                           f"task_time = '{timedelta(seconds=self.total_time)}';")
             self.log.info("Task: finished.")
 
@@ -303,16 +313,16 @@ class RoundTaskExecutor(TaskExecutor):
                 self.log.warning(f"Task: couldn't fulfill quota; "
                                  f"expected {self.quota} operations, actual {operation_count}.")
                 if self.stop_no_quota:
-                    self.log.warning("Quota unfulfilled, stopping.")
+                    self.log.warning("Task: Quota unfulfilled, stopping.")
                     self.log_report(incomplete=True)
-                    sys.exit(1)
+                    return
             elif operation_count == self.max:
                 self.log.info(f"Task: round complete with {operation_count} operations.")
 
             self.round_stats.add_round(operations=operation_count,
                                        failures=try_n-1,
-                                       start_time=datetime.fromtimestamp(self.task_start_time),
-                                       end_time=datetime.now(),
+                                       start_time=datetime_fromtimestamp_tz(self.task_start_time),
+                                       end_time=datetime_now_tz(),
                                        task_time=timedelta(seconds=task_time),
                                        task_sleep_time=timedelta(seconds=task_sleep_time))
 
@@ -369,8 +379,8 @@ class RoundTaskExecutor(TaskExecutor):
             self.log.info(f"Task: incomplete round #{round_n}: "
                           f"operations = {self.handler_stats.get_operation_count()}; "
                           f"failures = {self.round_retries}; "
-                          f"start_time = '{datetime.fromtimestamp(self.task_start_time)}'; "
-                          f"end_time = '{datetime.now()}'; "
+                          f"start_time = '{datetime_fromtimestamp_tz(self.task_start_time)}'; "
+                          f"end_time = '{datetime_now_tz()}'; "
                           f"task_time = '{task_time}';")
             total_operations += self.handler_stats.get_operation_count()
             total_failures += self.round_retries
@@ -388,7 +398,7 @@ class RoundTaskExecutor(TaskExecutor):
                       f"total_job_time = '{total_job_time}';")
 
         if incomplete is True:
-            self.log.info("Task: interrupted.")
+            self.log.info("Task: stopped prematurely.")
         else:
             self.log.info("Task: finished.")
 

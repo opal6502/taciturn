@@ -74,7 +74,7 @@ class LoginApplicationHandler(BaseApplicationHandler):
     def _load_access_lists(self):
         self.log.info("Loading whitelist.")
         wl = self.session.query(Whitelist.name)\
-                        .filter(and_(Whitelist.user_id == self.app_account.user_id,
+                        .filter(and_(Whitelist.taciturn_user_id == self.app_account.taciturn_user_id,
                                      Whitelist.application_id == Application.id,
                                      Application.name == self.application_name,
                                      Application.id == Whitelist.application_id))
@@ -82,7 +82,7 @@ class LoginApplicationHandler(BaseApplicationHandler):
 
         self.log.info("Loading blacklist.")
         bl = self.session.query(Blacklist.name)\
-                        .filter(and_(Blacklist.user_id == self.app_account.user_id,
+                        .filter(and_(Blacklist.taciturn_user_id == self.app_account.taciturn_user_id,
                                      Blacklist.application_id == Application.id,
                                      Application.name == self.application_name,
                                      Application.id == Blacklist.application_id))

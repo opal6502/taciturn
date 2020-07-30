@@ -28,6 +28,8 @@ from taciturn.db.base import (
     JobId
 )
 
+import taciturn.db.followers
+
 
 print('> Taciturn database init script!')
 

@@ -19,6 +19,7 @@ from taciturn.applications.instagram import InstagramHandler
 
 from taciturn.job import (
     TaciturnJob,
+    TaskExecutor,
     RoundTaskExecutor,
     ApplicationHandlerStats
 )

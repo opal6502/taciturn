@@ -62,7 +62,8 @@ class BaseApplicationHandler(ABC):
         self.session = get_session()
 
         self.assets_dir = self.config['assets_dir']
-        self.screenshots_dir = self.config.get('screenshots_dir')
+        self.screenshots_dir = self.config['screenshots_dir']
+        self.temp_file_ttl = self.config['temp_file_ttl']
 
         self.driver = driver
         if self.driver is None:
@@ -163,7 +164,18 @@ class BaseApplicationHandler(ABC):
         return f"var rect = arguments[0].getBoundingClientRect(); return rect.{side};"
 
     def _delete_old_temp_files(self):
-        pass
+        self.log.info(f"Cleaning up old tempfiles for '{self.application_name}', older than '{self.temp_file_ttl}'.")
+        asset_prefix = self._asset_path_prefix()
+        for f in os.listdir(asset_prefix):
+            full_filename = os.path.join(asset_prefix, f)
+            if os.path.isfile(full_filename):
+                file_timestamp = datetime.fromtimestamp(os.path.getctime(full_filename))
+                if (file_timestamp + self.temp_file_ttl) < datetime.now():
+                    self.log.debug(f"Temp file '{full_filename}' expired, deleting.")
+                    os.remove(full_filename)
+                else:
+                    time_left = (file_timestamp + self.temp_file_ttl) - datetime.now()
+                    self.log.debug(f"Temp file '{full_filename}' not expired, '{time_left}' left.")
 
     def _asset_path_prefix(self, file_name=None):
         if file_name is None:
@@ -172,6 +184,9 @@ class BaseApplicationHandler(ABC):
             return os.path.join(self.assets_dir, 'application', self.application_name, file_name)
 
     def temp_download_file(self, file_url, prefix=None, retries=FILE_DOWNLOAD_RETRIES):
+        # first, remove stale tempfiles:
+        self._delete_old_temp_files()
+
         # properly parse the url and get the extension:
         parsed_link = urllib.parse.urlparse(file_url)
         parsed_path, parsed_ext = os.path.splitext(parsed_link.path)

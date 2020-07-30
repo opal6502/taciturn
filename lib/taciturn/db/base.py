@@ -21,6 +21,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy import (
     Column,
     Integer,
+    Sequence,
     String,
     DateTime,
     ForeignKey,
@@ -34,17 +35,17 @@ class Application(ORMBase):
     "An application, like twitter, instagram, facebook, youtube ..."
     __tablename__ = 'application'
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, Sequence('application_id_seq'), primary_key=True)
 
     established = Column(DateTime, nullable=False)
     name = Column(String(100), unique=True, nullable=False)
 
 
-class User(ORMBase):
+class TaciturnUser(ORMBase):
     "An user of an application!"
-    __tablename__ = 'user'
+    __tablename__ = 'taciturn_user'
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, Sequence('taciturn_user_id_seq'), primary_key=True)
     # application_id = Column(Integer, ForeignKey('application.id'))
     # application = relationship('Application', backref='users')
 
@@ -60,11 +61,11 @@ class AppAccount(ORMBase):
     # an account for an application, a user may have many
     __tablename__ = 'app_account'
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, Sequence('app_account_id_seq'), primary_key=True)
     application_id = Column(Integer, ForeignKey('application.id'))
     application = relationship('Application', backref='app_accounts')
-    user_id = Column(Integer, ForeignKey('user.id'))
-    user = relationship('User', backref='app_accounts')
+    taciturn_user_id = Column(Integer, ForeignKey('taciturn_user.id'))
+    taciturn_user = relationship('TaciturnUser', backref='app_accounts')
 
     established = Column(DateTime, nullable=False)
 
@@ -76,11 +77,11 @@ class Whitelist(ORMBase):
     "Accounts to never unfollow!"
     __tablename__ = 'whitelist'
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, Sequence('whitelist_id_seq'), primary_key=True)
     application_id = Column(Integer, ForeignKey('application.id'))
-    application = relationship('Application', backref='whitelist_for_user')
-    user_id = Column(Integer, ForeignKey('user.id'))
-    user = relationship('User', backref='whitelist')
+    application = relationship('Application', backref='whitelist_for_taciturn_user')
+    taciturn_user_id = Column(Integer, ForeignKey('taciturn_user.id'))
+    taciturn_user = relationship('TaciturnUser', backref='whitelist')
 
     established = Column(DateTime, nullable=False)
     name = Column(String(100), nullable=False)
@@ -90,11 +91,11 @@ class Blacklist(ORMBase):
     "Accounts to never follow or deal with!"
     __tablename__ = 'blacklist'
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, Sequence('blacklist_id_seq'), primary_key=True)
     application_id = Column(Integer, ForeignKey('application.id'))
-    application = relationship('Application', backref='blacklist__for_user')
-    user_id = Column(Integer, ForeignKey('user.id'))
-    user = relationship('User', backref='blacklist')
+    application = relationship('Application', backref='blacklist_for_taciturn_user')
+    taciturn_user_id = Column(Integer, ForeignKey('taciturn_user.id'))
+    taciturn_user = relationship('TaciturnUser', backref='blacklist')
 
     established = Column(DateTime, nullable=False)
     name = Column(String(100), nullable=False)
@@ -104,6 +105,6 @@ class JobId(ORMBase):
     "where the latest job_id is kept"
     __tablename__ = 'jobid'
 
-    id = Column(Integer, primary_key=True)
+    id = Column(Integer, Sequence('jobid_id_seq'), primary_key=True)
     job_id = Column(BigInteger, nullable=False)
 

@@ -318,10 +318,11 @@ class InstagramHandler(FollowerApplicationHandler):
 
     def _post_image_input(self):
         # inputs seen on the instagram page:
-        # 1.  //*[@id="react-root"]/section/main/div/form/input
-        # 2.  //*[@id="react-root"]/section/nav[1]/div/div/form/input
-        locator = (By.XPATH, '//*[@id="react-root"]/section/main/div/form/input')
-        return self.new_wait().until(EC.element_to_be_clickable(locator))
+        # 1.  /html/body/div[1]/form/input
+        # 2.  /html/body/div[1]/section/main/div[1]/form/input    - I think this is for the profile image
+        # 3.  /html/body/div[1]/section/nav[1]/div/div/form/input
+        locator = (By.XPATH, '/html/body/div[1]/section/main/div[1]/form/input')
+        return self.new_wait().until(EC.presence_of_element_located(locator))
 
     def post_image(self, image_filename, post_body, retries=INSTAGRAM_ACTION_RETRIES):
         expand_image_locator = (By.XPATH, '//button/span[contains(@class, "createSpriteExpand") and text()="Expand"]')
