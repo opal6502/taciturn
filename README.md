@@ -36,9 +36,9 @@ Then, you have to initialize the database:
 
 ```shell script
 cd $TACITURN_ROOT/bin
-. ../conf/taciturn.sh    # includes venv
-init_db.py        # initalize db schema and define applications:
-                  # 'twitter', 'instagram', 'facebook', 'soundcloud'
+. ../conf/taciturn.sh    # includes venv activate
+python init_db.py        # initalize db schema and define applications:
+                         # 'twitter', 'instagram', 'facebook', 'soundcloud'
 ```
 
 ## Administering
@@ -51,7 +51,7 @@ The ```bin/taciturn_admin.py``` has a command-style syntax and can be run like t
 
 ```shell script
 cd $TACITURN_ROOT/bin
-. ../conf/taciturn.sh    # includes venv
+. ../conf/taciturn.sh    # includes venv activate
 python taciturn_admin.py user my_user add     # add a Taciturn user
 python taciturn_admin.py app app_name add     # add an Application (you shouln't have to do this unless you're writing an app handler)
 python taciturn_admin.py 
@@ -107,7 +107,7 @@ Taciturn is being developed in a Macintosh/UNIX environment, and thus
 
 ```shell script
 cd $TACITURN_ROOT/bin
-. ../conf/taciturn.sh    # includes venv
+. ../conf/taciturn.sh    # includes venv activate
 python taciturn_cli.py -u taciturn_user -j twitter_follow -s -t target_account
 ```
 
@@ -117,7 +117,7 @@ Ideally, Taciturn jobs will be run from a CI tool such as Jenkins.  A typical Ta
 
 ```shell script
 cd $TACITURN_ROOT/bin
-. ../conf/taciturn.sh
+. ../conf/taciturn.sh    # includes venv activate
 python taciturn_cli.py -u taciturn_user -j twitter_follow -s -t target_account
 ```
 
