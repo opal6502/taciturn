@@ -4,7 +4,7 @@ Taciturn is a Python/Selenium tool and framework for automating social media tas
 
 For current development notes, please see my [Evernote Document](https://www.evernote.com/l/AtC6SBcYqJ9Iu6mm9uSS8M5NUJIUPXLQZ7U) on this.  The current development version is v0.2a!  It has some very useful features but has only been used on my personal development system!
 
-This documentation is pretty minimal, but I can make it better upon request!  It's a good, free tool to kick-start a the social media presence of a project your believe in!
+This documentation is pretty minimal, but I can make it better upon request!  This is a good, free tool to help kick-start a the social media presence of a project your believe in!
 
 Also, while this is an extremely useful tool, it does require some programming knowledge in order to configure and run it!
 
@@ -14,9 +14,8 @@ Taciturn has some nice features, and I'm trying to make it easy to write more!
 
 There are automated jobs to:
 
-- Targeted follow/unfollow the maximum amount from Twitter and Instagram
+- Targeted follow/unfollow the maximum daily amount from Twitter and Instagram and Soundcloud
 - Relatively easy-to-configure time thresholds to maintain mutual follows, unfollow non-mutuals after several days.
-- A pretty flexible
 - Make automated Tweets
 - Make automated Facebook posts
 - There is code to make automated Instagram posts, but it is very temperamental and won't run in headless mode
@@ -60,7 +59,7 @@ cd $TACITURN_ROOT/bin
 python taciturn_cli.py -u taciturn_user -j twitter_follow -s -t target_account
 ```
 
-## Running from the CLI 
+## Running from Jenkins or other CI (recommended)
 
 Ideally, Taciturn jobs will be run from a CI tool such as Jenkins.  A typical Taciturn job script within Jenkins will look like this:
 
