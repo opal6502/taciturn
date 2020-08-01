@@ -32,10 +32,21 @@ class TwitterFollowJob(TaciturnJob):
 
     def __init__(self):
         super().__init__()
-        if self.options.target is None:
-            self.log.error("you must specify a target account with '-t account'.")
+        self.target_account = None
+        self.use_listq = None
+
+        if self.options.target is None and self.options.listq is False:
+            self.log.error("you must specify a target account with '-t account', or use a listq.")
             sys.exit(1)
-        self.target_account = self.options.target[0]
+        if self.options.target is not None and self.options.listq is True:
+            self.log.error("the '-t account' and '-L' are incompatible")
+            sys.exit(1)
+        if self.options.target is not None:
+            self.target_account = self.options.target[0]
+        if self.options.listq is True:
+            self.use_listq = self.options.listq
+        if not self.use_listq and not self.target_account:
+            self.log.critical("you must specify a target account or that you are using a listq")
 
     def run(self):
         daily_max_follows = self.options.max or self.config['app:twitter']['daily_max_follows']
@@ -43,14 +54,17 @@ class TwitterFollowJob(TaciturnJob):
         day_length = self.config['day_length']
         twitter_account = self.get_account('twitter')
 
+        target_name = self.target_account or 'listq'
+
         self.log.info(f"config: taciturn user = '{self.username}'")
         self.log.info(f"config: twitter user = '{twitter_account.name}'")
-        self.log.info(f"config: target account = '{self.target_account}'")
+        self.log.info(f"config: target account = '{target_name}'")
         self.log.info(f"config: daily_max_follows = {daily_max_follows}")
         self.log.info(f"config: round_max_follows = {round_max_follows}")
 
         unfollow_stats = ApplicationHandlerStats()
         twitter_handler = TwitterHandler(twitter_account, unfollow_stats)
+
         twitter_handler.login()
 
         RoundTaskExecutor(call=lambda: twitter_handler.start_following(self.target_account, quota=round_max_follows),

@@ -16,47 +16,7 @@
 # along with Tactiurn.  If not, see <https://www.gnu.org/licenses/>.
 
 
-# taciturn admin, for dealing with application and account related stuff!
-
-# so this admin script will interpret its arguments as commands, and the
-# command language will be defined as follows:
-#
-#  taciturn_admin.py app
-#  -- list all apps
-#  taciturn_admin.py app app-name
-#  -- list app
-#  taciturn_admin.py app app-name { add | delete }
-#  -- create/delete app
-#
-#  taciturn_admin.py user
-#  -- list all users
-#  taciturn_admin.py user user-name
-#  -- list user
-#  taciturn_admin.py user user-name { add | delete }
-#  -- create/delete user
-#  taciturn_admin.py user user-name app
-#  -- display all apps/accounts for user
-#  taciturn_admin.py user user-name app app-name
-#  -- display user account for app
-#  taciturn_admin.py user user-name app app-name account
-#  -- display user account for app
-#  taciturn_admin.py user user-name app app-name account account-name
-#  -- display user account for app
-#  taciturn_admin.py user user-name app app-name account account-name { add | delete | password }
-#  -- create/delete/edit user account for app
-#  taciturn_admin.py user user-name app app-name whitelist
-#  -- list user-name's whitelist
-#  taciturn_admin.py user user-name app app-name whitelist account-name
-#  -- list user-name's and app-name's whitelist account account-name
-#  taciturn_admin.py user user-name app app-name whitelist account-name { add | delete }
-#  -- add or delete whitelist entry
-#  taciturn_admin.py user user-name app app-name blacklist
-#  -- list user-name's blacklist
-#  taciturn_admin.py user user-name app app-name blacklist account-name
-#  -- list user-name's and app-name's blacklist account account-name
-#  taciturn_admin.py user user-name app app-name blacklist account-name { add | delete }
-#  -- add or delete blacklist entry
-
+# taciturn_admin.py, for administering Taciturn!
 
 import sys
 
@@ -79,6 +39,204 @@ from taciturn.db.base import (
 config = get_config()
 engine = config['database_engine']
 session = Session(bind=engine)
+
+# Command doc-strings:
+
+_doc_general = """taciturn_admin.py - a command-line interface to edit Taciturn admin data.
+
+This utility provides a simple command syntax to allow you to add and edit Taciturn users, apps, accounts,
+as well as access lists.
+
+You can run 'taciturn_admin.py -' to send commands via stdin, or 'taciturn_admin.py -f {command-file}' to 
+read commands from a command file.
+"""
+
+_doc_app_command = """'app' commands:
+  app
+     - list all apps
+  app {app-name}
+     - list 'app-name'
+  app {add|delete} {app-name}
+     - add or delete 'app-name'
+
+It is unlikely you'll ever need to use this unless you're writing your own application handler.
+"""
+
+_doc_user_command = """'user' commands:
+  user
+    - list all Taciturn users
+  user [user-name]
+    - list 'user-name'
+  user {add|delete} {user-name}
+    - add or delete 'user-name'
+
+Most things in Taciturn belong to a user/app pair such as accounts and access lists.
+
+examples:
+  user add my_taciturn_user1
+    - add a Taciturm user
+  user delete my_taciturn_user1
+    - delete this Taciturn user
+"""
+
+_doc_account_command = """'account' commands:
+  account user {user-name}
+    - list all accounts belonging to 'user-name'
+  account user {user-name} app {app-name}
+    - list account for '{user-name}' on '{app-name}'
+  account user {user-name} app {app-name} {account-name}
+    - list account '{account-name}' for '{user-name}' on '{app-name}'
+  account user {user-name} app {app-name} {add|delete} {account-name}
+    - add or delete '{account-name}' for '{user-name}' on '{app-name}'
+
+Administer application accounts associated with a Taciturn user.
+
+examples:
+  account user taciturn_user1 app twitter add twitter_login@foo.com
+     - add a 'twitter' account for 'taciturn_user1', with the name 'twitter_login@foo.com',
+       you'll be prompted to enter a password, too
+  account user chef_123 app instagram add chef_123@bar.com
+     - add an 'instagram' account for your Taciturn user 'chef_123'
+
+Note each Taciturn user can only have one application account each.  If you need more, you can
+simply create a new Taciturn user.
+"""
+
+# list_name, user_cmd, user_name, app_cmd, app_name, list_entry_list, *_e = _args
+# list_name, user_cmd, user_name, app_cmd, app_name, list_verb, list_entry_edit, *_e = _args
+
+_doc_access_list_command = """access list commands:
+  {blacklist|whitelist} user {user-name} app {app-name}
+    - list blacklist or whitelist for '{user-name}' on '{app-name}'
+  {blacklist|whitelist} user {user-name} app {app-name} {list-entry}
+    - make sure '{list-entry}' is in the whitelist or blacklist for '{user-name}' on '{app-name}'
+  {blacklist|whitelist} user {user-name} app {app-name} {add|delete} {list-entry}
+    - delete or add '{list-entry}' from the whitelist or blacklist for '{user-name}' on '{app-name}'
+
+examples:
+  blacklist user fred_needs_followers app twitter add @nasty_person
+    - prevent 'fred_needs_followers' from following '@nasty_person' on 'twitter'
+  whitelist user my_insta_posse app instagram add crony_1
+    - make sure that 'my_insta_posse' never un-follows 'crony_1' on 'instagram'
+
+By default, even Taciturn mutual followers will expire, you need to whitelist friends that you want to keep.
+"""
+
+
+def run_command(args):
+    len_args = len(args)
+    max_args = 8
+    _args = args + [None] * ((max_args + 1) - len_args)
+
+    if len_args > max_args:
+        raise TaciturnAdminSyntaxError("Too many arguments for a valid command")
+    if len_args < 1:
+        raise TaciturnAdminSyntaxError("Too few arguments for a valid command")
+
+    if _args[0] == 'help':
+        _print_full_help()
+        return False
+
+    if _args[0] == 'app':
+        # 'app' command:
+        _s, app_verb, app_name_edit, *_e = _args
+        _s, app_name_list, *_e = _args
+
+        if ((not 1 <= len_args <= 2) or
+                len_args == 3 and (app_verb != 'add' or app_verb != 'delete')):
+            print(_doc_app_command, file=sys.stderr)
+            raise TaciturnAdminSyntaxError("Syntax error")
+
+        if app_verb is not None and len_args == 3:
+            if app_verb == 'add':
+                return add_app(app_name_edit)
+            elif app_verb == 'delete':
+                return delete_app(app_name_edit)
+        if 1 <= len_args <= 2:
+            return list_apps(app_name_list)
+
+    if _args[0] == 'user':
+        # parse 'user' command:
+        _s, user_name_list, *_e = _args
+        _s, user_verb, user_name_edit, *_e = _args
+
+        if ((not 1 <= len_args <= 3) or
+                (len_args == 3 and not(user_verb == 'add' or user_verb == 'delete'))):
+            print(_doc_user_command, file=sys.stderr)
+            raise TaciturnAdminSyntaxError("Syntax error")
+
+        if user_verb is not None:
+            if len_args == 3:
+                if user_verb == 'add':
+                    return add_user(user_name_edit)
+                elif user_verb == 'delete':
+                    return delete_user(user_name_edit)
+        if 1 <= len_args <= 2:
+            return list_users(user_name_list)
+
+    if _args[0] == 'account':
+        # app account-related commands:
+        _s, user_cmd, user_name, app_cmd, app_name, acct_name_list, *_e = _args
+        _s, user_cmd, user_name, app_cmd, app_name, acct_verb, acct_name_edit, *_e = _args
+
+        if ((not 3 <= len_args <= 7) or
+                user_cmd != 'user' or
+                len_args == 4 or
+                (app_cmd is not None and app_cmd != 'app')):
+            print(_doc_account_command, file=sys.stderr)
+            raise TaciturnAdminSyntaxError("Syntax error")
+
+        if len_args == 7:
+            if acct_verb == 'add':
+                return add_user_account(user_name, app_name, acct_name_edit)
+            if acct_verb == 'delete':
+                return delete_user_account(user_name, app_name, acct_name_edit)
+            if acct_verb == 'password':
+                return password_user_account(user_name, app_name, acct_name_edit)
+        if 3 <= len_args <= 6:
+            return list_user_accounts(user_name, app_name, acct_name_list)
+
+    if _args[0] in ('whitelist', 'blacklist'):
+        # access-list related commands:
+        list_name, user_cmd, user_name, app_cmd, app_name, list_entry_list, *_e = _args
+        list_name, user_cmd, user_name, app_cmd, app_name, list_verb, list_entry_edit, *_e = _args
+
+        if ((not 5 <= len_args <= 7) or
+                user_cmd != 'user' or app_cmd != 'app'):
+            print(_doc_access_list_command, file=sys.stderr)
+            raise TaciturnAdminSyntaxError("Syntax error")
+
+        if list_name == 'whitelist':
+            if len_args == 7:
+                if list_verb == 'add':
+                    return add_to_whitelist(user_name, app_name, list_entry_edit)
+                elif list_verb == 'delete':
+                    return delete_from_whitelist(user_name, app_name, list_entry_edit)
+            elif 5 <= len_args <= 6:
+                return list_whitelist(user_name, app_name, list_entry_list)
+
+        if list_name == 'blacklist':
+            if len_args == 7:
+                if list_verb == 'add':
+                    return add_to_blacklist(user_name, app_name, list_entry_edit)
+                elif list_verb == 'delete':
+                    return delete_from_blacklist(user_name, app_name, list_entry_edit)
+            elif 5 <= len_args <= 6:
+                return list_blacklist(user_name, app_name, list_entry_list)
+
+    raise TaciturnAdminSyntaxError(f"Syntax error")
+
+
+def _print_full_help():
+    print(_doc_general, file=sys.stderr)
+    print(file=sys.stderr)
+    print(_doc_app_command, file=sys.stderr)
+    print(file=sys.stderr)
+    print(_doc_user_command, file=sys.stderr)
+    print(file=sys.stderr)
+    print(_doc_account_command, file=sys.stderr)
+    print(file=sys.stderr)
+    print(_doc_access_list_command, file=sys.stderr)
 
 
 def list_apps(app_name=None):
@@ -200,18 +358,23 @@ def list_user_accounts(user_name, app_name=None, account_name=None):
         return False
 
     if app_name is None and account_name is None:
-        accounts = session.query(TaciturnUser, AppAccount).filter(AppAccount.taciturn_user_id == TaciturnUser.id)
+        accounts = session.query(AppAccount, Application.name)\
+                                .filter(TaciturnUser.id == user.id,
+                                        AppAccount.taciturn_user_id == TaciturnUser.id,
+                                        AppAccount.application_id == Application.id)
     elif app_name is not None and account_name is None:
-        accounts = session.query(TaciturnUser, AppAccount).filter(and_(Application.name == app_name,
-                                                                       AppAccount.taciturn_user_id == TaciturnUser.id,
-                                                                       AppAccount.application_id == Application.id))
+        accounts = session.query(AppAccount, Application.name)\
+                                .filter(and_(Application.name == app_name,
+                                             TaciturnUser.id == user.id,
+                                             AppAccount.taciturn_user_id == TaciturnUser.id,
+                                             AppAccount.application_id == Application.id))
     elif app_name is not None and account_name is not None:
-        accounts = session.query(TaciturnUser, AppAccount).filter(and_(AppAccount.name == account_name,
-                                                                       Application.name == app_name,
-                                                                       AppAccount.taciturn_user_id == TaciturnUser.id,
-                                                                       AppAccount.application_id == Application.id))
-
-    # print('-'*72)
+        accounts = session.query(AppAccount, Application.name)\
+                                .filter(and_(AppAccount.name == account_name,
+                                             TaciturnUser.id == user.id,
+                                             Application.name == app_name,
+                                             AppAccount.taciturn_user_id == TaciturnUser.id,
+                                             AppAccount.application_id == Application.id))
 
     if app_name is not None and account_name is not None:
         if accounts.count() == 0:
@@ -237,8 +400,8 @@ def list_user_accounts(user_name, app_name=None, account_name=None):
         print('*** None ***')
         return False
 
-    for account in accounts.all():
-        print(account)
+    for acct, app_name in accounts.all():
+        print(' ', acct.id, '\t', acct.name, '\t', app_name, '\t', acct.established)
 
 
 def add_user_account(user_name, app_name, account_name):
@@ -343,17 +506,6 @@ def list_whitelist(user_name, app_name, entry_name=None):
 
 
 def add_to_whitelist(user_name, app_name, entry_name):
-    entry = session.query(Whitelist) \
-        .filter(and_(Whitelist.name == entry_name,
-                     TaciturnUser.name == user_name,
-                     Application.name == app_name,
-                     TaciturnUser.id == Whitelist.taciturn_user_id,
-                     Application.id == Whitelist.application_id))\
-        .one_or_none()
-    if entry is not None:
-        print(f"'{entry_name}' is already in whitelist for '{user_name}' on app '{app_name}'", file=sys.stderr)
-        return False
-
     app = session.query(Application).filter_by(name=app_name).one_or_none()
     user = session.query(TaciturnUser).filter_by(name=user_name).one_or_none()
     if app is None and user is None:
@@ -364,6 +516,17 @@ def add_to_whitelist(user_name, app_name, entry_name):
         return False
     if user is None:
         print(f"No such user '{user_name}'", file=sys.stderr)
+        return False
+
+    entry = session.query(Whitelist) \
+        .filter(and_(Whitelist.name == entry_name,
+                     TaciturnUser.name == user_name,
+                     Application.name == app_name,
+                     TaciturnUser.id == Whitelist.taciturn_user_id,
+                     Application.id == Whitelist.application_id))\
+        .one_or_none()
+    if entry is not None:
+        print(f"'{entry_name}' is already in whitelist for '{user_name}' on app '{app_name}'", file=sys.stderr)
         return False
 
     new_whitelist_entry = Whitelist(name=entry_name,
@@ -441,17 +604,6 @@ def list_blacklist(user_name, app_name, entry_name=None):
 
 
 def add_to_blacklist(user_name, app_name, entry_name):
-    entry = session.query(Blacklist) \
-        .filter(and_(Blacklist.name == entry_name,
-                     TaciturnUser.name == user_name,
-                     Application.name == app_name,
-                     TaciturnUser.id == Blacklist.taciturn_user_id,
-                     Application.id == Blacklist.application_id))\
-        .one_or_none()
-    if entry is not None:
-        print(f"'{entry_name}' is already in whitelist for '{user_name}' on app '{app_name}'", file=sys.stderr)
-        return False
-
     app = session.query(Application).filter_by(name=app_name).one_or_none()
     user = session.query(TaciturnUser).filter_by(name=user_name).one_or_none()
     if app is None and user is None:
@@ -462,6 +614,17 @@ def add_to_blacklist(user_name, app_name, entry_name):
         return False
     if user is None:
         print(f"No such user '{user_name}'", file=sys.stderr)
+        return False
+
+    entry = session.query(Blacklist) \
+        .filter(and_(Blacklist.name == entry_name,
+                     TaciturnUser.name == user_name,
+                     Application.name == app_name,
+                     TaciturnUser.id == Blacklist.taciturn_user_id,
+                     Application.id == Blacklist.application_id))\
+        .one_or_none()
+    if entry is not None:
+        print(f"'{entry_name}' is already in whitelist for '{user_name}' on app '{app_name}'", file=sys.stderr)
         return False
 
     new_blacklist_entry = Blacklist(name=entry_name,
@@ -517,97 +680,42 @@ def input_account_password():
             print("Passwords do not match, try again.", file=sys.stderr)
 
 
-def run_command(args):
-    if len(args) < 1:
-        print("At least one argument required: 'app' or 'user'", file=sys.stderr)
-        return False
+def command_repl(input_file):
+    line_number = 1
+    for line in input_file:
+        print(f"> {line.rstrip()}")
+        de_comment = list(line.split('#'))[0]
+        line_as_args = de_comment.split()
+        # print("line_as_args:", line_as_args)
+        if len(line_as_args) == 0:
+            continue
+        try:
+            run_command(line_as_args)
+        except TaciturnAdminSyntaxError as e:
+            raise type(e)(str(e) + f" at line {line_number} of '{input_file.name}'")
+        line_number += 1
 
-    #  taciturn_admin.py app
-    if args[0] == 'app':
-        # list all apps ...
-        if len(args) == 1:
-            return list_apps()
-        # list an app ...
-        elif len(args) == 2:
-            return list_apps(args[1])
-        # add/delete an app ...
-        elif len(args) == 3:
-            if args[2] == 'add':
-                return add_app(args[1])
-            elif args[2] == 'delete':
-                return delete_app(args[1])
-            else:
-                print(f"cannot perform '{args[2]}' on app '{args[1]}'", file=sys.stderr)
-                return False
-    elif args[0] == 'user':
-        #  taciturn_admin.py user
-        if len(args) == 1:
-            return list_users()
-        #  taciturn_admin.py user user-name
-        elif len(args) == 2:
-            return list_users(args[1])
-        #  taciturn_admin.py user user-name { add | delete | app }
-        elif len(args) == 3:
-            if args[2] == 'add':
-                return add_user(args[1])
-            elif args[2] == 'delete':
-                return delete_user(args[1])
-            elif args[2] == 'app':
-                list_user_accounts(args[1])
-            else:
-                print("Syntax error.", file=sys.stderr)
-                return False
-        # taciturn_admin.py user user-name app app-name
-        elif len(args) == 4:
-            if args[0] == 'user' and args[2] == 'app':
-                return list_user_accounts(args[1], args[3])
-            else:
-                print("Syntax error.", file=sys.stderr)
-                return False
-        #  taciturn_admin.py user user-name app app-name account
-        elif len(args) == 5:
-            if args[0] == 'user' and args[2] == 'app' and args[4] == 'account':
-                return list_user_accounts(args[1], args[3])
-            #  taciturn_admin.py user user-name app app-name whitelist
-            elif args[0] == 'user' and args[2] == 'app' and args[4] == 'whitelist':
-                return list_whitelist(args[1], args[3])
-            elif args[0] == 'user' and args[2] == 'app' and args[4] == 'blacklist':
-                return list_blacklist(args[1], args[3])
-            else:
-                print("Syntax error.", file=sys.stderr)
-                return False
-        #  taciturn_admin.py user user-name app app-name account account-name
-        elif len(args) == 6:
-            if args[0] == 'user' and args[2] == 'app' and args[4] == 'account':
-                return list_user_accounts(args[1], args[3], args[5])
-            elif args[0] == 'user' and args[2] == 'app' and args[4] == 'whitelist':
-                return list_whitelist(args[1], args[3], args[5])
-            elif args[0] == 'user' and args[2] == 'app' and args[4] == 'blacklist':
-                return list_blacklist(args[1], args[3], args[5])
-            else:
-                print("Syntax error.", file=sys.stderr)
-                return False
-        #  taciturn_admin.py user user-name app app-name account account-name { add | delete | password }
-        elif len(args) == 7:
-            if args[0] == 'user' and args[2] == 'app' and args[4] == 'account' and args[6] == 'add':
-                return add_user_account(args[1], args[3], args[5])
-            elif args[0] == 'user' and args[2] == 'app' and args[4] == 'account' and args[6] == 'delete':
-                return delete_user_account(args[1], args[3], args[5])
-            elif args[0] == 'user' and args[2] == 'app' and args[4] == 'account' and args[6] == 'password':
-                return password_user_account(args[1], args[3], args[5])
-            if args[0] == 'user' and args[2] == 'app' and args[4] == 'whitelist' and args[6] == 'add':
-                return add_to_whitelist(args[1], args[3], args[5])
-            elif args[0] == 'user' and args[2] == 'app' and args[4] == 'whitelist' and args[6] == 'delete':
-                return delete_from_whitelist(args[1], args[3], args[5])
-            if args[0] == 'user' and args[2] == 'app' and args[4] == 'blacklist' and args[6] == 'add':
-                return add_to_blacklist(args[1], args[3], args[5])
-            elif args[0] == 'user' and args[2] == 'app' and args[4] == 'blacklist' and args[6] == 'delete':
-                return delete_from_blacklist(args[1], args[3], args[5])
-            else:
-                print("Syntax error.", file=sys.stderr)
-                return False
+
+class TaciturnAdminSyntaxError(Exception):
+    pass
 
 
 if __name__ == '__main__':
-    code = run_command(sys.argv[1:])
-    sys.exit(1 if code is False else 0)
+    # see if we're configured to do a file-repl:
+    args = sys.argv[1:]
+
+    if len(args) == 1 and args[0] == '-':
+        command_repl(sys.stdin)
+    elif len(args) == 2 and args[0] == '-f':
+        cmd_filename = args[1]
+        with open(cmd_filename, 'r') as cmd_file:
+            command_repl(cmd_file)
+    else:
+        code = True
+        try:
+            code = run_command(sys.argv[1:])
+        except TaciturnAdminSyntaxError as e:
+            print(f"taciturn_admin.py: error: {e}")
+            code = False
+            raise e
+        sys.exit(1 if code is False else 0)
