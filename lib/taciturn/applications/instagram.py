@@ -28,7 +28,8 @@ from selenium.common.exceptions import (
 from taciturn.applications.base import ApplicationHandlerException
 from taciturn.applications.follower import FollowerApplicationHandler
 
-INSTAGRAM_ACTION_RETRIES = 20
+
+INSTAGRAM_ACTION_RETRIES = 10
 
 
 class InstagramHandler(FollowerApplicationHandler):
@@ -36,10 +37,6 @@ class InstagramHandler(FollowerApplicationHandler):
 
     application_url = "https://instagram.com"
     application_login_url = application_url
-
-    # sent an iPhone user agent to enable mobile functionality!
-    webdriver_user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 6_0 like Mac OS X) AppleWebKit/536.26 " \
-                             "(KHTML, like Gecko) Version/6.0 Mobile/10A5376e Safari/8536.25"
 
     application_asset_dirname = 'instagram'
     default_profile_image = 'default-profile-pic.jpg'
@@ -49,6 +46,12 @@ class InstagramHandler(FollowerApplicationHandler):
 
     _flist_lighbox_prefix = '//div[@role="presentation"]/div[@role="dialog"]'
     flist_prefix_xpath = _flist_lighbox_prefix + '/div/div[2]/ul/div/li[{}]'
+
+    # use an iPhone user agent, and window width, to simulate mobile functionality!
+    webdriver_user_agent = "Mozilla/5.0 (iPhone; CPU iPhone OS 6_0 like Mac OS X) AppleWebKit/536.26 " \
+                           "(KHTML, like Gecko) Version/6.0 Mobile/10A5376e Safari/8536.25"
+    webdriver_window_dimensions = (740, 1080)
+    webdriver_maximize_window = False
 
     def __init__(self, app_account, handler_stats=None, driver=None):
         super().__init__(app_account, handler_stats, driver)
@@ -63,11 +66,15 @@ class InstagramHandler(FollowerApplicationHandler):
 
         # possible occurrence:  an initial login button is sometimes present:
         try:
-            locator = (By.XPATH, '//*[@id="react-root"]/section/main/article//div[2]/button')
+            initial_text_locator = (By.XPATH, '//section/main/article'
+                                              '//div[text()="Sign up to see photos and videos from your friends."]')
+            login_optional_wait.until(EC.presence_of_element_located(initial_text_locator))
+            locator = (By.XPATH, '//*[@id="react-root"]/section/main/article//div[2]/button[text()="Log In"]')
+            # /html/body/div[1]/section/main/article/div/div/div/form/div[2]/button
             first_login_button = login_optional_wait.until(EC.element_to_be_clickable(locator))
             first_login_button.click()
         except TimeoutException:
-            pass
+            self.log.info("No initial login screen, skipping")
 
         # enter username and password:
         login_form_locator = (By.XPATH, '//form')
@@ -77,13 +84,16 @@ class InstagramHandler(FollowerApplicationHandler):
 
         login_form_wait = self.new_wait(timeout=10)
 
-        login_form_wait.until(EC.element_to_be_clickable(login_form_locator))
+        login_form_element = login_form_wait.until(EC.element_to_be_clickable(login_form_locator))
         login_form_wait.until(EC.element_to_be_clickable(login_name_field_locator))\
                                     .send_keys(self.app_username)
         login_form_wait.until(EC.element_to_be_clickable(login_password_field_locator))\
                                     .send_keys(self.app_password)
         login_form_wait.until(EC.element_to_be_clickable(login_button_locator))\
                                     .click()
+
+        # sometimes login can be slow, so this ensures we wait until login is completed:
+        self.new_wait().until(EC.staleness_of(login_form_element))
 
         # sometimes prompted with extra security, check if bypass necessary:
 
@@ -340,9 +350,10 @@ class InstagramHandler(FollowerApplicationHandler):
                 # next button must be present if operation is successful:
                 next_button_element = self._post_image_next_button()
                 break
-            except TimeoutException:
+            except (TimeoutException, StaleElementReferenceException):
                 self.log.warning(f"Image post not accepted (try {try_n} of {retries})")
                 self.driver.refresh()
+                continue
         else:
             raise ApplicationHandlerException(f"Couldn't submit image after {retries} tries.")
 

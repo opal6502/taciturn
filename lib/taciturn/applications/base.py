@@ -54,6 +54,8 @@ class BaseApplicationHandler(ABC):
 
     webdriver_user_agent = None
     webdriver_wait_ignored_exceptions = (StaleElementReferenceException, NoSuchElementException)
+    webdriver_maximize_window = True
+    webdriver_window_dimensions = (1920, 1080)
 
     def __init__(self, driver=None):
         self.config = get_config()
@@ -67,15 +69,15 @@ class BaseApplicationHandler(ABC):
 
         self.driver = driver
         if self.driver is None:
-            self._init_webdriver()
+            self._webdriver_init()
 
         if self.options.cookies:
             self.load_cookies(self.options.cookies[0])
 
-    def _init_webdriver(self):
+    def _webdriver_init(self):
         # init Selenium webdriver:
 
-        # driver is usually passed by command line or config:
+        # driver name is passed by command line option or config:
         if self.options.driver:
             webdriver_type = self.options.driver[0]
         else:
@@ -85,44 +87,49 @@ class BaseApplicationHandler(ABC):
 
         if webdriver_type is None or webdriver_type == 'chrome':
             from selenium.webdriver.chrome.options import Options
+
             opts = Options()
-            opts.add_argument("--start-maximized")
-            opts.add_argument("--window-size=1920,1080")
-            opts.add_argument("--disable-popup-blocking")
             opts.page_load_strategy = 'normal'
-            if self.webdriver_user_agent:
-                opts.add_argument("user-agent={}".format(self.webdriver_user_agent))
-                self.driver = Chrome(options=opts)
-            else:
-                self.driver = Chrome()
+            opts.add_argument("--disable-popup-blocking")
+            self._webdriver_chrome_set_window(opts)
+            self._webdriver_chrome_set_user_agent(opts)
+
+            self.driver = Chrome(options=opts)
         elif webdriver_type == 'chrome_headless':
             from selenium.webdriver.chrome.options import Options
+
             opts = Options()
-            opts.add_argument("--start-maximized")
-            opts.add_argument("--window-size=1920,1080")
-            opts.add_argument("--disable-popup-blocking")
             opts.page_load_strategy = 'normal'
-            if self.webdriver_user_agent:
-                opts.add_argument("user-agent={}".format(self.webdriver_user_agent))
             opts.add_argument("--headless")
+            opts.add_argument("--disable-popup-blocking")
+            self._webdriver_chrome_set_window(opts)
+            self._webdriver_chrome_set_user_agent(opts)
+
             self.driver = Chrome(options=opts)
         elif webdriver_type == 'firefox':
+            from selenium.webdriver.firefox.options import Options
             from selenium.webdriver import FirefoxProfile
+
             profile = FirefoxProfile()
-            if self.webdriver_user_agent:
-                profile.set_preference('general.useragent.override', self.webdriver_user_agent)
+            self._webdriver_firefox_set_user_agent(profile)
+
+            opts = Options()
+            self._webdriver_firefox_set_window(opts)
+
             self.driver = Firefox(profile)
         elif webdriver_type == 'firefox_headless':
             from selenium.webdriver.firefox.options import Options
             from selenium.webdriver import FirefoxProfile
+
             profile = FirefoxProfile()
-            options = Options()
-            if self.webdriver_user_agent:
-                profile.set_preference('general.useragent.override', self.webdriver_user_agent)
-            options.headless = True
-            self.driver = Firefox(profile, options=options)
-            driver = webdriver.Firefox(options=options)
-        # XXX this htmlunit stuff has not at all been tested by me, but it should be enough?
+            self._webdriver_firefox_set_user_agent(profile)
+
+            opts = Options()
+            self._webdriver_firefox_set_window(opts)
+            opts.headless = True
+
+            self.driver = Firefox(profile, options=opts)
+        # XXX this htmlunit stuff has not at all been tested by me, but it should be a decent start?
         elif webdriver_type == 'htmlunit':
             self.driver = Remote(desired_capabilities=webdriver.DesiredCapabilities.HTMLUNIT)
         elif webdriver_type == 'htmlunitwithjs':
@@ -130,6 +137,37 @@ class BaseApplicationHandler(ABC):
         else:
             self.log.critical(f"Webdriver '{webdriver_type}' not supported, check config!")
             sys.exit(1)
+
+        self.driver.set_window_position(0, 0)
+        if self.webdriver_maximize_window:
+            self.driver.maximize_window()
+        else:
+            self.driver.set_window_size(*self.webdriver_window_dimensions)
+
+    # helper methods to set options/properties properly by browser type:
+
+    def _webdriver_chrome_set_window(self, chrome_opts):
+        if self.webdriver_maximize_window:
+            chrome_opts.add_argument("--start-maximized")
+        else:
+            x, y = self.webdriver_window_dimensions
+            chrome_opts.add_argument(f'--window-size={x},{y}')
+
+    def _webdriver_firefox_set_window(self, firefox_opts):
+        if self.webdriver_maximize_window:
+            pass
+        else:
+            x, y = self.webdriver_window_dimensions
+            firefox_opts.add_argument(f'--width={x}')
+            firefox_opts.add_argument(f'--height={x}')
+
+    def _webdriver_chrome_set_user_agent(self, chrome_opts):
+        if self.webdriver_user_agent:
+            chrome_opts.add_argument("user-agent={}".format(self.webdriver_user_agent))
+
+    def _webdriver_firefox_set_user_agent(self, firefox_profile):
+        if self.webdriver_user_agent:
+            firefox_profile.set_preference('general.useragent.override', self.webdriver_user_agent)
 
     def goto_path(self, page_path):
         self.driver.get(self.application_url+'/'+page_path)
@@ -207,13 +245,21 @@ class BaseApplicationHandler(ABC):
 
         for try_n in range(1, retries+1):
             try:
+                self.log.debug(f"Downloading temp file: '{file_url}' (try {try_n} of {retries})")
                 image_request = requests.get(file_url, stream=True)
                 if image_request.status_code == 200:
                     with open(filename_with_path, 'wb') as f:
                         for chunk in image_request:
                             f.write(chunk)
+                    break
                 else:
-                    raise ConnectionError(f"Got unexpected response code: {image_request.status_code}")
+                    self.log.error(f"Got HTTP response {image_request.status_code} "
+                                   f"while downloading temp file: '{file_url}'")
+                    if try_n >= retries:
+                        raise ConnectionError(f"Got unexpected response code: {image_request.status_code} "
+                                              f"while downloading temp file: '{file_url}'")
+                    sleep(60)
+                    continue
             except (requests.exceptions.ConnectionError, ConnectionError) as e:
                 self.log.exception(f"Exception occurred while downloading image. (try {try_n} of {retries})")
                 if try_n >= retries:

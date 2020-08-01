@@ -36,8 +36,14 @@ class RootBeerGuyJob(TaciturnJob):
     def __init__(self):
         super().__init__()
 
+        self.driver_name = self.options.driver[0] if self.options.driver is not None \
+            else self.config['selenium_webdriver']
+        if self.driver_name != 'firefox':
+            self.log.critical("This job can only be run with the 'firefox' webdriver.")
+            sys.exit(1)
+
         if self.options.user is None:
-            self.log.critical("You must provide a user with the '-u user' option")
+            self.log.critical("You must provide a user with the '-u user' option, and this user must be 'rbg'")
         if self.options.link is None:
             self.log.critical("You must provide bandcamp track link with the '-l url' option")
         if self.options.genre is None:
@@ -51,7 +57,7 @@ class RootBeerGuyJob(TaciturnJob):
             sys.exit(1)
 
         self.username = self.options.user[0]
-        self.target_link = self.options.link[0]
+        self.bandcamp_track_link = self.options.link[0]
         self.genre = self.options.genre[0]
         self.no_instagram = self.options.noinstagram
 
@@ -79,7 +85,7 @@ class RootBeerGuyJob(TaciturnJob):
         bandcamp_handler = BandcampHandler()
         shared_driver = bandcamp_handler.driver
 
-        parsed_track = bandcamp_handler.music_scrape_track_data(self.target_link)
+        parsed_track = bandcamp_handler.music_scrape_track_data(self.bandcamp_track_link)
 
         self.log.debug(f"Bandcamp track: artist = {parsed_track.artist}")
         self.log.debug(f"Bandcamp track: title = {parsed_track.title}")
@@ -90,7 +96,8 @@ class RootBeerGuyJob(TaciturnJob):
         img_local_path = parsed_track.img_local
         author_string = str(parsed_track)
         facebook_post_body = f"{author_string}\n\n{self.help_us_string}\n\n{self.genre_tags}"
-        others_post_body = f"{author_string}\n\n{self.target_link}\n\n{self.help_us_string}\n\n{self.genre_tags}"
+        others_post_body = f"{author_string}\n\n{self.bandcamp_track_link}\n\n" \
+                           f"{self.help_us_string}\n\n{self.genre_tags}"
 
         self.log.info("Job: track info scraped from Bandcamp.")
 
@@ -101,7 +108,7 @@ class RootBeerGuyJob(TaciturnJob):
         facebook_account = self.get_account('facebook')
         facebook_handler = FacebookHandler(facebook_account, driver=shared_driver)
         facebook_handler.login()
-        facebook_handler.page_post_create('RBGuy9000', facebook_post_body, self.target_link)
+        facebook_handler.page_post_create('RBGuy9000', facebook_post_body, self.bandcamp_track_link)
 
         self.log.info("Job: made Facebook post.")
 
