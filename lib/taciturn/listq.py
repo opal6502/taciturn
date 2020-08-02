@@ -21,7 +21,7 @@ from sqlalchemy import and_
 from sqlalchemy.sql.expression import func
 
 from taciturn.config import get_session, get_logger
-from taciturn.db.listqueue import ListQueues, ListQueueEntry, LISTQUEUE_STRING_DATA_LENGTH
+from taciturn.db.listq import ListQueues, ListQueueEntry, LISTQUEUE_STRING_DATA_LENGTH
 
 from taciturn.datetime import datetime_now_tz
 
@@ -109,24 +109,24 @@ class ListQueue:
         return pop_row
 
     def _process_read(self, read_row, recycle=None):
-        read_limit = read_row.read_limit
+        reads_left = read_row.reads_left
 
-        if read_limit is not None:
-            if read_limit > 1:
-                read_row.read_limit -= 1
+        if reads_left is not None:
+            if reads_left > 1:
+                read_row.reads_left -= 1
                 self._session.flush()
                 return read_row
-            elif recycle is None and read_limit and read_limit == 1:
+            elif recycle is None and reads_left and reads_left == 1:
                 self._session.delete(read_row)
                 self._session.flush()
                 return read_row
-            elif recycle is not None and read_limit == 1:
+            elif recycle is not None and reads_left == 1:
                 read_row.read_count = int(recycle)
                 read_row.last_read_datetime = datetime_now_tz()
                 self._session.flush()
                 return read_row
         else:
-            # when read_limit is None:
+            # when reads_left is None:
             read_row.last_read_datetime = datetime_now_tz()
             self._session.flush()
             return read_row
@@ -140,7 +140,7 @@ class ListQueue:
             raise ListQueueException("Listq is empty.")
         return self_len
 
-    def append(self, data_string, read_limit=None):
+    def append(self, data_string, reads_left=None):
         data_string_len = len(data_string)
         if data_string_len > LISTQUEUE_STRING_DATA_LENGTH:
             raise ListQueueException(f"Data string is too long: length is {data_string_len}, "
@@ -150,7 +150,7 @@ class ListQueue:
             queue_id=self._id,
             data_string=data_string,
             established=datetime_now_tz(),
-            read_limit=read_limit,
+            reads_left=reads_left,
             last_read_datetime=None
         )
 
