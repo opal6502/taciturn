@@ -19,19 +19,30 @@ from abc import abstractmethod
 
 from taciturn.applications.base import BaseApplicationHandler
 
+from taciturn.db.listq import TrackDataListqEntry
+from taciturn.listq import ListQueueEntry
+
 
 class MusicScrapingHandler(BaseApplicationHandler):
     tmp_file_prefix = 'music-scraper'
 
-    def music_scrape_track_data(self, track_url):
-        self.driver.get(track_url)
+    def scrape_page_track_data(self, track_url=None, download_image=True):
+        if track_url is not None:
+            self.driver.get(track_url)
+        else:
+            # make sure the url is properly set, it can be 'about:blank' sometimes:
+            while (track_url := self.driver.current_url) == 'about:blank':
+                pass
 
-        track_artist = self.music_scrape_artist()
-        track_title = self.music_scrape_title()
-        track_album = self.music_scrape_album()
-        track_art_url = self.music_scrape_art_url()
+        track_artist = self.track_scrape_artist()
+        track_title = self.track_scrape_title()
+        track_album = self.track_scrape_album()
+        track_art_url = self.track_scrape_art_url()
 
-        track_art_file = self.temp_download_file(track_art_url, prefix=self.tmp_file_prefix)
+        if download_image is True:
+            track_art_file = self.temp_download_file(track_art_url, prefix=self.tmp_file_prefix)
+        else:
+            track_art_file = None
 
         return TrackData(
             url=track_url,
@@ -42,23 +53,27 @@ class MusicScrapingHandler(BaseApplicationHandler):
         )
 
     @abstractmethod
-    def music_scrape_artist(self):
+    def artist_scrape_all_tracks(self, artist_url):
         pass
 
     @abstractmethod
-    def music_scrape_title(self):
+    def track_scrape_artist(self):
         pass
 
     @abstractmethod
-    def music_scrape_album(self):
+    def track_scrape_title(self):
         pass
 
     @abstractmethod
-    def music_scrape_art_url(self):
+    def track_scrape_album(self):
+        pass
+
+    @abstractmethod
+    def track_scrape_art_url(self):
         pass
 
 
-class TrackData:
+class TrackData(ListQueueEntry):
     _field_names = {'url', 'title', 'artist', 'album', 'label', 'img_local'}
 
     def __init__(self, **kwargs):
@@ -84,6 +99,21 @@ class TrackData:
                          'by '+self.artist)
         return track_str
 
+    def __repr__(self):
+        album_repr = f"'{self.album}'" if self.album is not None else 'None'
+        return (f"<TrackData "
+                f"artist='{self.artist}'>, "
+                f"album={album_repr}, "
+                f"title='{self.title}' ...>")
+
+    def to_listq_entry(self):
+        return TrackDataListqEntry(
+            track_artist=self.artist,
+            track_title=self.title,
+            track_album=self.album,
+            track_label=self.label,
+            track_url=self.url
+        )
 
 # it's important to order these tags by priority so that when twitter truncates the list, the best possible combo
 # is still present, and 30 max for facebook, not sure about instagram:
@@ -146,4 +176,8 @@ class Genres:
 
 
 class GenereException(Exception):
+    pass
+
+
+class ScrapeException(Exception):
     pass

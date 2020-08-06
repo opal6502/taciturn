@@ -36,7 +36,7 @@ from taciturn.db.base import (
     Blacklist
 )
 
-from taciturn.db.listq import ListQueues, ListQueueEntry, LISTQUEUE_DATA_STRING_LENGTH
+from taciturn.db.listq import ListQueues, ListQueueEntry
 
 
 config = get_config()
@@ -1004,6 +1004,10 @@ class TaciturnAdminSyntaxError(Exception):
 if __name__ == '__main__':
     # see if we're configured to do a file-repl:
     args = sys.argv[1:]
+
+    if len(args) == 0:
+        _print_full_help()
+        sys.exit(1)
 
     if len(args) == 1 and args[0] == '-':
         command_repl(sys.stdin)

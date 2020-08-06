@@ -79,7 +79,7 @@ class RootBeerGuyJob(TaciturnJob):
         bandcamp_handler = BandcampHandler()
         shared_driver = bandcamp_handler.driver
 
-        parsed_track = bandcamp_handler.music_scrape_track_data(self.target_link)
+        parsed_track = bandcamp_handler.scrape_page_track_data(self.target_link)
 
         self.log.debug(f"Bandcamp track: artist = {parsed_track.artist}")
         self.log.debug(f"Bandcamp track: title = {parsed_track.title}")
