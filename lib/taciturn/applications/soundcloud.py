@@ -43,7 +43,7 @@ class SoundcloudHandler(FollowerApplicationHandler):
     default_profile_image = 'avatars-default-500x500.jpg'
 
     button_text_following = ('Following',)
-    button_text_not_following = ('Follow',)
+    button_text_not_following = ('Follow', 'Follow back')
 
     def __init__(self, app_account, driver=None):
         super().__init__(app_account, driver)

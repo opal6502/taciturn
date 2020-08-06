@@ -59,6 +59,9 @@ default_config = {
     # selenium webdriver type:  'chrome', 'chrome_headless', 'firefox', 'firefox_headless'
     'selenium_webdriver': 'chrome_headless',
 
+    # optional, addition to default webdriver wait:
+    # 'webdriver_wait_pad': 60*5,
+
     'app:*': {
         # default values for all applications:
 

@@ -25,6 +25,7 @@ from selenium.common.exceptions import (
     StaleElementReferenceException
 )
 
+from taciturn.applications.login import ApplicationHandlerUserPrivilegeSuspendedException
 from taciturn.applications.follower import FollowerApplicationHandler
 
 
@@ -64,10 +65,27 @@ class TwitterHandler(FollowerApplicationHandler):
         login_wait.until(EC.presence_of_element_located(login_button_selector))\
             .click()
 
+        # This is handy when for manually dealing with reCAPTCHs:
+        #from time import sleep
+        #sleep(9000)
+
+        # could be prompted with aReCAPTCHA here:
+        try:
+            recaptcha_prompt_text = "Let’s check one thing first. Please confirm you’re not a robot by " \
+                                    "passing a Google reCAPTCHA challenge."
+            recaptcha_prompt_xpath = f'//*[@id="react-root"]/div/div/div[2]/main/div/div' \
+                                     f'/div[2]/div[1]/span[text()="{recaptcha_prompt_text}"]'
+            recaptcha_prompt_locator = (By.XPATH, recaptcha_prompt_xpath)
+            self.driver.find_element(*recaptcha_prompt_locator)
+            raise ApplicationHandlerUserPrivilegeSuspendedException("Being prompted to pass a reCAPTCHA challenge.")
+        except NoSuchElementException:
+            pass
+
         # use this to verify login ...
         self._home_profile_link_element()
         # refresh, because sometimes login isn't fully processed ...
         self.driver.refresh()
+
 
         self.log.info("Logged in.")
 
@@ -274,14 +292,15 @@ class TwitterHandler(FollowerApplicationHandler):
 
     def flist_first_from_following(self):
         super().flist_first_from_following()
+        # //div[@id='react-root']/div/div/div[2]/main/div/div/div/div/div/div[2]/section/div/div/div[3]/div/div/div/div[2]/div
         locator = (By.XPATH, '//section[starts-with(@aria-labelledby, "accessible-list-")]'
-                             '/div[@aria-label="Timeline: Following"]/div/div/div[1]')
+                             '/div[@aria-label="Timeline: Following"]/div/div[1]')
         return self.new_wait().until(EC.presence_of_element_located(locator))
 
     def flist_first_from_followers(self):
         super().flist_first_from_followers()
         locator = (By.XPATH, '//section[starts-with(@aria-labelledby, "accessible-list-")]'
-                             '/div[@aria-label="Timeline: Followers"]/div/div/div[1]')
+                             '/div[@aria-label="Timeline: Followers"]/div/div[1]')
         return self.new_wait().until(EC.presence_of_element_located(locator))
 
     def flist_next(self, flist_entry):

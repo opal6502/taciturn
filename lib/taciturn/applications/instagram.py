@@ -29,7 +29,7 @@ from taciturn.applications.base import ApplicationHandlerException
 from taciturn.applications.follower import FollowerApplicationHandler
 
 
-INSTAGRAM_ACTION_RETRIES = 10
+INSTAGRAM_ACTION_RETRIES = 20
 
 
 class InstagramHandler(FollowerApplicationHandler):

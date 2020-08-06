@@ -54,8 +54,8 @@ class BaseApplicationHandler(ABC):
 
     webdriver_user_agent = None
     webdriver_wait_ignored_exceptions = (StaleElementReferenceException, NoSuchElementException)
-    webdriver_maximize_window = True
     webdriver_window_dimensions = (1920, 1080)
+    webdriver_script_timeout = 5*60
 
     def __init__(self, driver=None):
         self.config = get_config()
@@ -66,6 +66,8 @@ class BaseApplicationHandler(ABC):
         self.assets_dir = self.config['assets_dir']
         self.screenshots_dir = self.config['screenshots_dir']
         self.temp_file_ttl = self.config['temp_file_ttl']
+
+        self.webdriver_wait_pad = self.config.get('webdriver_wait_pad', 0)
 
         self.driver = driver
         if self.driver is None:
@@ -79,13 +81,13 @@ class BaseApplicationHandler(ABC):
 
         # driver name is passed by command line option or config:
         if self.options.driver:
-            webdriver_type = self.options.driver[0]
+            self._driver_name = self.options.driver[0]
         else:
-            webdriver_type = self.options.driver or self.config['selenium_webdriver']
+            self._driver_name = self.options.driver or self.config['selenium_webdriver']
 
-        self.log.info(f"Starting Selenium with '{webdriver_type}' web driver")
+        self.log.info(f"Starting Selenium with '{self._driver_name}' web driver")
 
-        if webdriver_type is None or webdriver_type == 'chrome':
+        if self._driver_name is None or self._driver_name == 'chrome':
             from selenium.webdriver.chrome.options import Options
 
             opts = Options()
@@ -95,7 +97,7 @@ class BaseApplicationHandler(ABC):
             self._webdriver_chrome_set_user_agent(opts)
 
             self.driver = Chrome(options=opts)
-        elif webdriver_type == 'chrome_headless':
+        elif self._driver_name == 'chrome_headless':
             from selenium.webdriver.chrome.options import Options
 
             opts = Options()
@@ -106,23 +108,23 @@ class BaseApplicationHandler(ABC):
             self._webdriver_chrome_set_user_agent(opts)
 
             self.driver = Chrome(options=opts)
-        elif webdriver_type == 'firefox':
+        elif self._driver_name == 'firefox':
             from selenium.webdriver.firefox.options import Options
             from selenium.webdriver import FirefoxProfile
 
             profile = FirefoxProfile()
-            self._webdriver_firefox_set_user_agent(profile)
+            self._webdriver_firefox_set_profile(profile)
 
             opts = Options()
             self._webdriver_firefox_set_window(opts)
 
             self.driver = Firefox(profile)
-        elif webdriver_type == 'firefox_headless':
+        elif self._driver_name == 'firefox_headless':
             from selenium.webdriver.firefox.options import Options
             from selenium.webdriver import FirefoxProfile
 
             profile = FirefoxProfile()
-            self._webdriver_firefox_set_user_agent(profile)
+            self._webdriver_firefox_set_profile(profile)
 
             opts = Options()
             self._webdriver_firefox_set_window(opts)
@@ -130,42 +132,34 @@ class BaseApplicationHandler(ABC):
 
             self.driver = Firefox(profile, options=opts)
         # XXX this htmlunit stuff has not at all been tested by me, but it should be a decent start?
-        elif webdriver_type == 'htmlunit':
+        elif self._driver_name == 'htmlunit':
             self.driver = Remote(desired_capabilities=webdriver.DesiredCapabilities.HTMLUNIT)
-        elif webdriver_type == 'htmlunitwithjs':
+        elif self._driver_name == 'htmlunitwithjs':
             self.driver = Remote(desired_capabilities=webdriver.DesiredCapabilities.HTMLUNITWITHJS)
         else:
-            self.log.critical(f"Webdriver '{webdriver_type}' not supported, check config!")
+            self.log.critical(f"Webdriver '{self._driver_name}' not supported, check config!")
             sys.exit(1)
 
         self.driver.set_window_position(0, 0)
-        if self.webdriver_maximize_window:
-            self.driver.maximize_window()
-        else:
-            self.driver.set_window_size(*self.webdriver_window_dimensions)
+        self.driver.set_window_size(*self.webdriver_window_dimensions)
+        self.driver.set_script_timeout(self.webdriver_script_timeout)
 
     # helper methods to set options/properties properly by browser type:
 
     def _webdriver_chrome_set_window(self, chrome_opts):
-        if self.webdriver_maximize_window:
-            chrome_opts.add_argument("--start-maximized")
-        else:
-            x, y = self.webdriver_window_dimensions
-            chrome_opts.add_argument(f'--window-size={x},{y}')
+        x, y = self.webdriver_window_dimensions
+        chrome_opts.add_argument(f'--window-size={x},{y}')
 
     def _webdriver_firefox_set_window(self, firefox_opts):
-        if self.webdriver_maximize_window:
-            pass
-        else:
-            x, y = self.webdriver_window_dimensions
-            firefox_opts.add_argument(f'--width={x}')
-            firefox_opts.add_argument(f'--height={x}')
+        x, y = self.webdriver_window_dimensions
+        firefox_opts.add_argument(f'--width={x}')
+        firefox_opts.add_argument(f'--height={x}')
 
     def _webdriver_chrome_set_user_agent(self, chrome_opts):
         if self.webdriver_user_agent:
             chrome_opts.add_argument("user-agent={}".format(self.webdriver_user_agent))
 
-    def _webdriver_firefox_set_user_agent(self, firefox_profile):
+    def _webdriver_firefox_set_profile(self, firefox_profile):
         if self.webdriver_user_agent:
             firefox_profile.set_preference('general.useragent.override', self.webdriver_user_agent)
 
@@ -302,11 +296,13 @@ class BaseApplicationHandler(ABC):
                 # try url as path:
                 return Image.open(image_url_or_path)
 
-    def new_wait(self, driver=None, timeout=60, ignored_exceptions=None):
+    def new_wait(self, driver=None, timeout=None, ignored_exceptions=None):
         if driver is None:
             driver = self.driver
         if ignored_exceptions is None:
             ignored_exceptions = self.webdriver_wait_ignored_exceptions
+        if timeout is None:
+            timeout = 60 + self.webdriver_wait_pad
         return WebDriverWait(driver,
                              timeout=timeout,
                              ignored_exceptions=ignored_exceptions)

@@ -84,6 +84,13 @@ class FollowerApplicationHandler(LoginApplicationHandler):
                              Unfollowed.application_id == self.app_account.application_id,
                         )).one_or_none()
 
+    def db_get_all_unfollowed(self, flist_username):
+        return self.session.query(Unfollowed)\
+                .filter(and_(Unfollowed.name == flist_username,
+                             Unfollowed.taciturn_user_id == self.app_account.taciturn_user_id,
+                             Unfollowed.application_id == self.app_account.application_id,
+                        ))
+
     def db_get_follower(self, flist_username):
         return self.session.query(Follower)\
                 .filter(and_(Follower.name == flist_username,
@@ -284,6 +291,7 @@ class FollowerApplicationHandler(LoginApplicationHandler):
         self.log.info("Starting user following session.")
         self.log.debug(f"Following quota = {quota or 'n/a'}")
         self.goto_followers_page(target_account)
+        self.driver.refresh()
 
         unfollow_hiatus = unfollow_hiatus or self.unfollow_hiatus
         header_overlap_y = self.flist_header_overlap_y()
@@ -427,6 +435,7 @@ class FollowerApplicationHandler(LoginApplicationHandler):
         self.log.info("Starting unfollow session.")
         self.log.debug(f"Unfollow quota = {quota or 'n/a'}")
         self.goto_following_page()
+        self.driver.refresh()
 
         follow_back_hiatus = follow_back_hiatus or self.follow_back_hiatus
         mutual_expire_hiatus = mutual_expire_hiatus or self.mutual_expire_hiatus
@@ -515,10 +524,24 @@ class FollowerApplicationHandler(LoginApplicationHandler):
                     raise ApplicationHandlerUserPrivilegeSuspendedException("Unfollowing seems to be restricted.")
 
                 # update database:
-                new_unfollowed_row = self.db_new_unfollowed(flist_username)
-                self.session.add(new_unfollowed_row)
+
+                # since we've confirmed state via a UI action, delete any existing unfollowed rows, if any exist:
+                existing_unfollowed_rows = self.db_get_all_unfollowed(flist_username)
+                existing_unfollowed_rows_count = existing_unfollowed_rows.count()
+                if existing_unfollowed_rows_count > 0:
+                    self.log.warn(f"Removing {existing_unfollowed_rows_count} existing unfollowed records "
+                                  f"for '{flist_username}' from db.")
+                    self.session.delete(existing_unfollowed_rows)
+
                 self.session.delete(flist_following_row)
+
+                new_unfollowed_row = self.db_new_unfollowed(flist_username)
+
+                self.session.add(new_unfollowed_row)
                 self.session.commit()
+
+                self.log.info(f"Removed following record for '{flist_username}' from db.")
+                self.log.info(f"Added unfollowed record for '{flist_username}' to db.")
 
                 self.stats.one_operation_successful()
 
@@ -529,6 +552,7 @@ class FollowerApplicationHandler(LoginApplicationHandler):
     def update_following(self):
         self.log.info("Updating following data.")
         self.goto_following_page()
+        self.driver.refresh()
 
         flist_entry = self.flist_first_from_following()
         entries_added = 0
@@ -558,6 +582,7 @@ class FollowerApplicationHandler(LoginApplicationHandler):
     def update_followers(self):
         self.log.info("Updating followers data.")
         self.goto_followers_page()
+        self.driver.refresh()
 
         flist_entry = self.flist_first_from_followers()
         entries_added = 0
