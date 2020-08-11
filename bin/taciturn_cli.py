@@ -46,6 +46,8 @@ def parse_arguments(args=None):
                     help="Quota of follows per each round in a 24-hour period")
     ap.add_argument('-s', '--stop', action='store_true',
                     help="Stop job if round quota can't be fulfilled")
+    ap.add_argument('-H', '--haltlogin', action='store_true',
+                    help="Halt after login, debug any authentication errors, useful only in headed browser mode")
     ap.add_argument('-D', '--driver', type=str, nargs=1, default=None,
                     help="Webdriver to use: htmlunit htmlunitjs chrome chrome_headless firefox firefox_headless")
     ap.add_argument('-C', '--cookies', type=str, nargs=1, default=None,

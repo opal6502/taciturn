@@ -34,6 +34,7 @@ from selenium.common.exceptions import TimeoutException, NoSuchElementException,
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
+import PIL
 from PIL import Image, ImageChops
 import requests
 
@@ -54,7 +55,7 @@ class BaseApplicationHandler(ABC):
 
     webdriver_user_agent = None
     webdriver_wait_ignored_exceptions = (StaleElementReferenceException, NoSuchElementException)
-    webdriver_window_dimensions = (1920, 1080)
+    webdriver_window_dimensions = (1400, 830)
     webdriver_script_timeout = 5*60
 
     def __init__(self, driver=None):
@@ -284,7 +285,7 @@ class BaseApplicationHandler(ABC):
             try:
                 response = requests.get(image_url_or_path)
                 return Image.open(BytesIO(response.content))
-            except requests.exceptions.ConnectionError as e:
+            except (requests.exceptions.ConnectionError, PIL.UnidentifiedImageError) as e:
                 # connection error occurred:
                 self.log.exception(f"Exception occurred while fetching image: "
                                    f"'{image_url_or_path}', try {try_n} of {retries}.")

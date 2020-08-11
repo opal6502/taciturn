@@ -15,6 +15,8 @@
 # along with Tactiurn.  If not, see <https://www.gnu.org/licenses/>.
 
 
+from time import sleep
+
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
@@ -25,7 +27,7 @@ from selenium.common.exceptions import (
     StaleElementReferenceException
 )
 
-from taciturn.applications.login import ApplicationHandlerUserPrivilegeSuspendedException
+from taciturn.applications.base import ApplicationHandlerException
 from taciturn.applications.follower import FollowerApplicationHandler
 
 
@@ -48,6 +50,57 @@ class TwitterHandler(FollowerApplicationHandler):
     def login(self):
         self.goto_login_page()
 
+        self._login_enter_forms()
+
+        # This is handy when for manually dealing with suspicious login attempts in-session, which
+        # you do have to do sometimes:
+        if self.haltlogin:
+            self.log.warning("Halting login!")
+            from time import sleep
+            sleep(90000)
+
+        # could be prompted with unusual activity here:
+
+        # //*[@id="react-root"]/div/div/div[2]/main/div/div/div[1]/span/text()
+        # "There was unusual login activity on your account. To help keep your account safe, please enter your phone number or email address to verify it’s you."
+
+        unusual_activity_prompt_text = "There was unusual login activity on your account. To help keep your account " \
+                                       "safe, please enter your phone number or email address to verify it’s you."
+        unusual_activity_prompt_xpath = f'//*[@id="react-root"]/div/div/div[2]/main/div/div/div[1]' \
+                                        f'/span[text()="{unusual_activity_prompt_text}"]'
+        unusual_activity_prompt_locator = (By.XPATH, unusual_activity_prompt_xpath)
+
+        try:
+            self.driver.find_element(*unusual_activity_prompt_locator)
+            self.log.warning("Got unusual activity login, attempting login again, this won't work unless your "
+                             "account login is an email address!  It's a good idea to change it to an email address "
+                             "if you haven't already!")
+            self._login_enter_forms()
+        except NoSuchElementException:
+            pass
+
+        # could be prompted with aReCAPTCHA here:
+
+        recaptcha_prompt_text = "Let’s check one thing first. Please confirm you’re not a robot by " \
+                                "passing a Google reCAPTCHA challenge."
+        recaptcha_prompt_xpath = f'//*[@id="react-root"]/div/div/div[2]/main/div/div' \
+                                 f'/div[2]/div[1]/span[text()="{recaptcha_prompt_text}"]'
+        recaptcha_prompt_locator = (By.XPATH, recaptcha_prompt_xpath)
+
+        try:
+            self.driver.find_element(*recaptcha_prompt_locator)
+            raise ApplicationHandlerException("Being prompted to pass a reCAPTCHA challenge.")
+        except NoSuchElementException:
+            pass
+
+        # use this to verify login ...
+        self._home_profile_link_element()
+        # refresh, because sometimes login isn't fully processed ...
+        self.driver.refresh()
+
+        self.log.info("Logged in.")
+
+    def _login_enter_forms(self):
         login_wait = self.new_wait(timeout=10)
 
         username_input_selector = (By.XPATH, '//div[@aria-hidden="false"]//form[@action="/sessions"]'
@@ -64,30 +117,6 @@ class TwitterHandler(FollowerApplicationHandler):
                                            '//span/span[contains(.,"Log in")]')
         login_wait.until(EC.presence_of_element_located(login_button_selector))\
             .click()
-
-        # This is handy when for manually dealing with reCAPTCHs:
-        #from time import sleep
-        #sleep(9000)
-
-        # could be prompted with aReCAPTCHA here:
-        try:
-            recaptcha_prompt_text = "Let’s check one thing first. Please confirm you’re not a robot by " \
-                                    "passing a Google reCAPTCHA challenge."
-            recaptcha_prompt_xpath = f'//*[@id="react-root"]/div/div/div[2]/main/div/div' \
-                                     f'/div[2]/div[1]/span[text()="{recaptcha_prompt_text}"]'
-            recaptcha_prompt_locator = (By.XPATH, recaptcha_prompt_xpath)
-            self.driver.find_element(*recaptcha_prompt_locator)
-            raise ApplicationHandlerUserPrivilegeSuspendedException("Being prompted to pass a reCAPTCHA challenge.")
-        except NoSuchElementException:
-            pass
-
-        # use this to verify login ...
-        self._home_profile_link_element()
-        # refresh, because sometimes login isn't fully processed ...
-        self.driver.refresh()
-
-
-        self.log.info("Logged in.")
 
     def _is_stale_login_lightbox_present(self):
         lightbox_text_locator = (By.XPATH, '//*[@id="react-root"]//span[text()="Don’t miss what’s happening"]')
@@ -303,10 +332,20 @@ class TwitterHandler(FollowerApplicationHandler):
                              '/div[@aria-label="Timeline: Followers"]/div/div[1]')
         return self.new_wait().until(EC.presence_of_element_located(locator))
 
-    def flist_next(self, flist_entry):
+    def flist_next(self, flist_entry, retries=10):
         super().flist_next(None)
-        locator = (By.XPATH, './following-sibling::div[1]')
-        return self.new_wait(flist_entry).until(EC.presence_of_element_located(locator))
+        flist_next_locator = (By.XPATH, './following-sibling::div[1]')
+        for try_n in range(1, retries+1):
+            try:
+                flist_next_element = self.new_wait(flist_entry)\
+                    .until(EC.presence_of_element_located(flist_next_locator))
+                self.flist_button(flist_next_element)   # scan username
+                return flist_next_element
+            except TimeoutException:
+                self.log.warning(f"Couldn't scan flist next (try {try_n} of {retries})")
+                sleep(10)
+                continue
+        raise ApplicationHandlerException("Unable to scan next flist element.")
 
     def flist_is_last(self, flist_entry):
         return False

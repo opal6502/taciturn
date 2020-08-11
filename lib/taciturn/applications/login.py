@@ -39,6 +39,8 @@ class LoginApplicationHandler(BaseApplicationHandler):
     def __init__(self, app_account, handler_stats=None, driver=None):
         super().__init__(driver)
 
+        self.haltlogin = self.options.haltlogin
+
         self.app_username = app_account.name
         self.app_password = app_account.password
         self.app_account = app_account

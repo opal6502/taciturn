@@ -46,6 +46,7 @@ class InstagramHandler(FollowerApplicationHandler):
 
     _flist_lighbox_prefix = '//div[@role="presentation"]/div[@role="dialog"]'
     flist_prefix_xpath = _flist_lighbox_prefix + '/div/div[2]/ul/div/li[{}]'
+    flist_start_reload = False
 
     # use an iPhone user agent, and window width, to simulate mobile functionality!
     webdriver_user_agent = "Mozilla/5.0 (iPhone; CPU iPhone OS 6_0 like Mac OS X) AppleWebKit/536.26 " \
