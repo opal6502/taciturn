@@ -567,7 +567,7 @@ class FollowerApplicationHandler(LoginApplicationHandler):
                 if existing_unfollowed_rows_count > 0:
                     self.log.warn(f"Removing {existing_unfollowed_rows_count} existing unfollowed records "
                                   f"for '{flist_username}' from db.")
-                    self.session.delete(existing_unfollowed_rows)
+                    existing_unfollowed_rows.delete()
 
                 self.session.delete(flist_following_row)
 
@@ -620,7 +620,7 @@ class FollowerApplicationHandler(LoginApplicationHandler):
 
             flist_entry = self.flist_next(flist_entry)
 
-    def update_followers(self):
+    def update_followers(self, new_entries_first=True):
         self.log.info("Updating followers data.")
         self.goto_followers_page()
         if self.flist_start_reload:
@@ -649,6 +649,9 @@ class FollowerApplicationHandler(LoginApplicationHandler):
                 entries_added += 1
             else:
                 self.log.info(f"User '{flist_username}' already in followers list in db.")
+                if new_entries_first is True:
+                    self.log.info("Existing follower record found, stopping scan.")
+                    break
 
             if self.flist_is_last(flist_entry):
                 raise ApplicationHandlerEndOfListException("List end encountered, stopping.")
