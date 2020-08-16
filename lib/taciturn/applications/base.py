@@ -34,6 +34,7 @@ from selenium.common.exceptions import TimeoutException, NoSuchElementException,
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
+import PIL
 from PIL import Image, ImageChops
 import requests
 
@@ -54,6 +55,8 @@ class BaseApplicationHandler(ABC):
 
     webdriver_user_agent = None
     webdriver_wait_ignored_exceptions = (StaleElementReferenceException, NoSuchElementException)
+    webdriver_window_dimensions = (1400, 830)
+    webdriver_script_timeout = 5*60
 
     def __init__(self, driver=None):
         self.config = get_config()
@@ -65,71 +68,101 @@ class BaseApplicationHandler(ABC):
         self.screenshots_dir = self.config['screenshots_dir']
         self.temp_file_ttl = self.config['temp_file_ttl']
 
+        self.webdriver_wait_pad = self.config.get('webdriver_wait_pad', 0)
+
         self.driver = driver
         if self.driver is None:
-            self._init_webdriver()
+            self._webdriver_init()
 
         if self.options.cookies:
             self.load_cookies(self.options.cookies[0])
 
-    def _init_webdriver(self):
+    def _webdriver_init(self):
         # init Selenium webdriver:
 
-        # driver is usually passed by command line or config:
+        # driver name is passed by command line option or config:
         if self.options.driver:
-            webdriver_type = self.options.driver[0]
+            self._driver_name = self.options.driver[0]
         else:
-            webdriver_type = self.options.driver or self.config['selenium_webdriver']
+            self._driver_name = self.options.driver or self.config['selenium_webdriver']
 
-        self.log.info(f"Starting Selenium with '{webdriver_type}' web driver")
+        self.log.info(f"Starting Selenium with '{self._driver_name}' web driver")
 
-        if webdriver_type is None or webdriver_type == 'chrome':
+        if self._driver_name is None or self._driver_name == 'chrome':
             from selenium.webdriver.chrome.options import Options
+
             opts = Options()
-            opts.add_argument("--start-maximized")
-            opts.add_argument("--window-size=1920,1080")
-            opts.add_argument("--disable-popup-blocking")
             opts.page_load_strategy = 'normal'
-            if self.webdriver_user_agent:
-                opts.add_argument("user-agent={}".format(self.webdriver_user_agent))
-                self.driver = Chrome(options=opts)
-            else:
-                self.driver = Chrome()
-        elif webdriver_type == 'chrome_headless':
-            from selenium.webdriver.chrome.options import Options
-            opts = Options()
-            opts.add_argument("--start-maximized")
-            opts.add_argument("--window-size=1920,1080")
             opts.add_argument("--disable-popup-blocking")
-            opts.page_load_strategy = 'normal'
-            if self.webdriver_user_agent:
-                opts.add_argument("user-agent={}".format(self.webdriver_user_agent))
-            opts.add_argument("--headless")
+            self._webdriver_chrome_set_window(opts)
+            self._webdriver_chrome_set_user_agent(opts)
+
             self.driver = Chrome(options=opts)
-        elif webdriver_type == 'firefox':
-            from selenium.webdriver import FirefoxProfile
-            profile = FirefoxProfile()
-            if self.webdriver_user_agent:
-                profile.set_preference('general.useragent.override', self.webdriver_user_agent)
-            self.driver = Firefox(profile)
-        elif webdriver_type == 'firefox_headless':
+        elif self._driver_name == 'chrome_headless':
+            from selenium.webdriver.chrome.options import Options
+
+            opts = Options()
+            opts.page_load_strategy = 'normal'
+            opts.add_argument("--headless")
+            opts.add_argument("--disable-popup-blocking")
+            self._webdriver_chrome_set_window(opts)
+            self._webdriver_chrome_set_user_agent(opts)
+
+            self.driver = Chrome(options=opts)
+        elif self._driver_name == 'firefox':
             from selenium.webdriver.firefox.options import Options
             from selenium.webdriver import FirefoxProfile
+
             profile = FirefoxProfile()
-            options = Options()
-            if self.webdriver_user_agent:
-                profile.set_preference('general.useragent.override', self.webdriver_user_agent)
-            options.headless = True
-            self.driver = Firefox(profile, options=options)
-            driver = webdriver.Firefox(options=options)
-        # XXX this htmlunit stuff has not at all been tested by me, but it should be enough?
-        elif webdriver_type == 'htmlunit':
+            self._webdriver_firefox_set_profile(profile)
+
+            opts = Options()
+            self._webdriver_firefox_set_window(opts)
+
+            self.driver = Firefox(profile)
+        elif self._driver_name == 'firefox_headless':
+            from selenium.webdriver.firefox.options import Options
+            from selenium.webdriver import FirefoxProfile
+
+            profile = FirefoxProfile()
+            self._webdriver_firefox_set_profile(profile)
+
+            opts = Options()
+            self._webdriver_firefox_set_window(opts)
+            opts.headless = True
+
+            self.driver = Firefox(profile, options=opts)
+        # XXX this htmlunit stuff has not at all been tested by me, but it should be a decent start?
+        elif self._driver_name == 'htmlunit':
             self.driver = Remote(desired_capabilities=webdriver.DesiredCapabilities.HTMLUNIT)
-        elif webdriver_type == 'htmlunitwithjs':
+        elif self._driver_name == 'htmlunitwithjs':
             self.driver = Remote(desired_capabilities=webdriver.DesiredCapabilities.HTMLUNITWITHJS)
         else:
-            self.log.critical(f"Webdriver '{webdriver_type}' not supported, check config!")
+            self.log.critical(f"Webdriver '{self._driver_name}' not supported, check config!")
             sys.exit(1)
+
+        self.driver.set_window_position(0, 0)
+        self.driver.set_window_size(*self.webdriver_window_dimensions)
+        self.driver.set_script_timeout(self.webdriver_script_timeout)
+
+    # helper methods to set options/properties properly by browser type:
+
+    def _webdriver_chrome_set_window(self, chrome_opts):
+        x, y = self.webdriver_window_dimensions
+        chrome_opts.add_argument(f'--window-size={x},{y}')
+
+    def _webdriver_firefox_set_window(self, firefox_opts):
+        x, y = self.webdriver_window_dimensions
+        firefox_opts.add_argument(f'--width={x}')
+        firefox_opts.add_argument(f'--height={x}')
+
+    def _webdriver_chrome_set_user_agent(self, chrome_opts):
+        if self.webdriver_user_agent:
+            chrome_opts.add_argument("user-agent={}".format(self.webdriver_user_agent))
+
+    def _webdriver_firefox_set_profile(self, firefox_profile):
+        if self.webdriver_user_agent:
+            firefox_profile.set_preference('general.useragent.override', self.webdriver_user_agent)
 
     def goto_path(self, page_path):
         self.driver.get(self.application_url+'/'+page_path)
@@ -207,13 +240,21 @@ class BaseApplicationHandler(ABC):
 
         for try_n in range(1, retries+1):
             try:
+                self.log.debug(f"Downloading temp file: '{file_url}' (try {try_n} of {retries})")
                 image_request = requests.get(file_url, stream=True)
                 if image_request.status_code == 200:
                     with open(filename_with_path, 'wb') as f:
                         for chunk in image_request:
                             f.write(chunk)
+                    break
                 else:
-                    raise ConnectionError(f"Got unexpected response code: {image_request.status_code}")
+                    self.log.error(f"Got HTTP response {image_request.status_code} "
+                                   f"while downloading temp file: '{file_url}'")
+                    if try_n >= retries:
+                        raise ConnectionError(f"Got unexpected response code: {image_request.status_code} "
+                                              f"while downloading temp file: '{file_url}'")
+                    sleep(60)
+                    continue
             except (requests.exceptions.ConnectionError, ConnectionError) as e:
                 self.log.exception(f"Exception occurred while downloading image. (try {try_n} of {retries})")
                 if try_n >= retries:
@@ -244,7 +285,7 @@ class BaseApplicationHandler(ABC):
             try:
                 response = requests.get(image_url_or_path)
                 return Image.open(BytesIO(response.content))
-            except requests.exceptions.ConnectionError as e:
+            except (requests.exceptions.ConnectionError, PIL.UnidentifiedImageError) as e:
                 # connection error occurred:
                 self.log.exception(f"Exception occurred while fetching image: "
                                    f"'{image_url_or_path}', try {try_n} of {retries}.")
@@ -256,11 +297,13 @@ class BaseApplicationHandler(ABC):
                 # try url as path:
                 return Image.open(image_url_or_path)
 
-    def new_wait(self, driver=None, timeout=60, ignored_exceptions=None):
+    def new_wait(self, driver=None, timeout=None, ignored_exceptions=None):
         if driver is None:
             driver = self.driver
         if ignored_exceptions is None:
             ignored_exceptions = self.webdriver_wait_ignored_exceptions
+        if timeout is None:
+            timeout = 60 + self.webdriver_wait_pad
         return WebDriverWait(driver,
                              timeout=timeout,
                              ignored_exceptions=ignored_exceptions)

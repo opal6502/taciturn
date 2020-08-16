@@ -17,7 +17,7 @@
 
 from abc import abstractmethod
 
-from time import time
+from time import time, sleep
 
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, StaleElementReferenceException
 from selenium.webdriver.common.by import By
@@ -48,6 +48,10 @@ class FollowerApplicationHandler(LoginApplicationHandler):
     button_text_not_following = None
 
     flist_prefix_xpath = None
+    flist_entry_load_timeout = 0
+    flist_load_timeout = 0
+
+    flist_start_reload = True
 
     def __init__(self, app_account, handler_stats=None, driver=None):
         super().__init__(app_account, handler_stats, driver)
@@ -96,6 +100,13 @@ class FollowerApplicationHandler(LoginApplicationHandler):
                              Unfollowed.taciturn_user_id == self.app_account.taciturn_user_id,
                              Unfollowed.application_id == self.app_account.application_id,
                         )).one_or_none()
+
+    def db_get_all_unfollowed(self, flist_username):
+        return self.session.query(Unfollowed)\
+                .filter(and_(Unfollowed.name == flist_username,
+                             Unfollowed.taciturn_user_id == self.app_account.taciturn_user_id,
+                             Unfollowed.application_id == self.app_account.application_id,
+                        ))
 
     def db_get_follower(self, flist_username):
         return self.session.query(Follower)\
@@ -307,6 +318,10 @@ class FollowerApplicationHandler(LoginApplicationHandler):
             self.log.info(f"listq target = '{target_account}'")
 
         self.goto_followers_page(target_account)
+        if self.flist_start_reload:
+            self.driver.refresh()
+        if self.flist_load_timeout > 0:
+            sleep(self.flist_load_timeout)
 
         unfollow_hiatus = unfollow_hiatus or self.unfollow_hiatus
         header_overlap_y = self.flist_header_overlap_y()
@@ -315,6 +330,8 @@ class FollowerApplicationHandler(LoginApplicationHandler):
         self.stats.reset_failure_count()
 
         while quota is None or self.stats.get_operation_count() < quota:
+            if self.flist_entry_load_timeout > 0:
+                sleep(self.flist_entry_load_timeout)
             self.element_scroll_to(flist_entry, y_offset=header_overlap_y)
 
             if self.flist_is_empty(flist_entry):
@@ -450,6 +467,10 @@ class FollowerApplicationHandler(LoginApplicationHandler):
         self.log.info("Starting unfollow session.")
         self.log.debug(f"Unfollow quota = {quota or 'n/a'}")
         self.goto_following_page()
+        if self.flist_start_reload:
+            self.driver.refresh()
+        if self.flist_load_timeout > 0:
+            sleep(self.flist_load_timeout)
 
         follow_back_hiatus = follow_back_hiatus or self.follow_back_hiatus
         mutual_expire_hiatus = mutual_expire_hiatus or self.mutual_expire_hiatus
@@ -460,6 +481,8 @@ class FollowerApplicationHandler(LoginApplicationHandler):
         self.stats.reset_failure_count()
 
         while quota is None or self.stats.get_operation_count() < quota:
+            if self.flist_entry_load_timeout > 0:
+                sleep(self.flist_entry_load_timeout)
             self.element_scroll_to(flist_entry, y_offset=header_overlap_y)
 
             # twitter end-of-list detection:
@@ -538,10 +561,24 @@ class FollowerApplicationHandler(LoginApplicationHandler):
                     raise ApplicationHandlerUserPrivilegeSuspendedException("Unfollowing seems to be restricted.")
 
                 # update database:
-                new_unfollowed_row = self.db_new_unfollowed(flist_username)
-                self.session.add(new_unfollowed_row)
+
+                # since we've confirmed state via a UI action, delete any existing unfollowed rows, if any exist:
+                existing_unfollowed_rows = self.db_get_all_unfollowed(flist_username)
+                existing_unfollowed_rows_count = existing_unfollowed_rows.count()
+                if existing_unfollowed_rows_count > 0:
+                    self.log.warn(f"Removing {existing_unfollowed_rows_count} existing unfollowed records "
+                                  f"for '{flist_username}' from db.")
+                    self.session.delete(existing_unfollowed_rows)
+
                 self.session.delete(flist_following_row)
+
+                new_unfollowed_row = self.db_new_unfollowed(flist_username)
+
+                self.session.add(new_unfollowed_row)
                 self.session.commit()
+
+                self.log.info(f"Removed following record for '{flist_username}' from db.")
+                self.log.info(f"Added unfollowed record for '{flist_username}' to db.")
 
                 self.stats.one_operation_successful()
 
@@ -552,11 +589,17 @@ class FollowerApplicationHandler(LoginApplicationHandler):
     def update_following(self):
         self.log.info("Updating following data.")
         self.goto_following_page()
+        if self.flist_start_reload:
+            self.driver.refresh()
+        if self.flist_load_timeout > 0:
+            sleep(self.flist_load_timeout)
 
         flist_entry = self.flist_first_from_following()
         entries_added = 0
 
         while True:
+            if self.flist_entry_load_timeout > 0:
+                sleep(self.flist_entry_load_timeout)
             if self.flist_is_empty(flist_entry):
                 raise ApplicationHandlerEndOfListException("List end encountered, stopping.")
 
@@ -581,11 +624,17 @@ class FollowerApplicationHandler(LoginApplicationHandler):
     def update_followers(self):
         self.log.info("Updating followers data.")
         self.goto_followers_page()
+        if self.flist_start_reload:
+            self.driver.refresh()
+        if self.flist_load_timeout > 0:
+            sleep(self.flist_load_timeout)
 
         flist_entry = self.flist_first_from_followers()
         entries_added = 0
 
         while True:
+            if self.flist_entry_load_timeout > 0:
+                sleep(self.flist_entry_load_timeout)
             if self.flist_is_empty(flist_entry):
                 raise ApplicationHandlerEndOfListException("List end encountered, stopping.")
 

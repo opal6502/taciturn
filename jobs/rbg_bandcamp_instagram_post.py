@@ -34,6 +34,12 @@ class RootBeerGuyInstagramJob(TaciturnJob):
     def __init__(self):
         super().__init__()
 
+        self.driver_name = self.options.driver[0] if self.options.driver is not None \
+            else self.config['selenium_webdriver']
+        if self.driver_name != 'firefox':
+            self.log.critical("This job can only be run with the 'firefox' webdriver.")
+            sys.exit(1)
+
         if self.options.user is None:
             self.log.critical("You must provide a user with the '-u user' option")
         if self.options.link is None:
@@ -49,7 +55,7 @@ class RootBeerGuyInstagramJob(TaciturnJob):
             sys.exit(1)
 
         self.username = self.options.user[0]
-        self.target_link = self.options.link[0]
+        self.bandcamp_track_link = self.options.link[0]
         self.genre = self.options.genre[0]
         self.no_instagram = self.options.noinstagram
 
@@ -62,7 +68,7 @@ class RootBeerGuyInstagramJob(TaciturnJob):
             self.log.critical(f"You must provide a genre with the -g flag, "
                               f"choose one from: {Genres.all_string()}")
         if self.no_instagram:
-            self.log.critical(f"No-instagram option '-I' makes no sense for this job.")
+            self.log.critical(f"Option to disable Instagram '-I' makes no sense for this job.")
 
         if not is_name_correct or not is_genre_correct or self.no_instagram:
             self.log.critical("Job: configuration error")
@@ -89,7 +95,7 @@ class RootBeerGuyInstagramJob(TaciturnJob):
 
         img_local_path = parsed_track.img_local
         author_string = str(parsed_track)
-        post_body = f"{author_string}\n\n{self.target_link}\n\n{self.help_us_string}\n\n{self.genre_tags}"
+        post_body = f"{author_string}\n\n{self.bandcamp_track_link}\n\n{self.help_us_string}\n\n{self.genre_tags}"
 
         self.log.info("Job: track info scraped from Bandcamp.")
         shared_driver.quit()  # close shared driver
