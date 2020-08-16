@@ -65,12 +65,11 @@ class FollowerApplicationHandler(LoginApplicationHandler):
         self.use_listq = self.options.listq
         if self.use_listq is True:
             self.targets_listq = self._get_targets_listq()
-
-        len_targets_listq = len(self.targets_listq)
-        if len_targets_listq == 0:
-            raise RuntimeError("Follow targets listq is empty.")
-        if len_targets_listq < 5:
-            self.log.warning(f"Follow targets listq only has {len_targets_listq} entries.")
+            len_targets_listq = len(self.targets_listq)
+            if len_targets_listq == 0:
+                raise RuntimeError("Follow targets listq is empty.")
+            if len_targets_listq < 5:
+                self.log.warning(f"Follow targets listq only has {len_targets_listq} entries.")
 
         self.flist_postition = 1  # using xpath indexing, starts from 1!
         self.flist_mode = None  # 'follower' or 'following'!
@@ -143,7 +142,7 @@ class FollowerApplicationHandler(LoginApplicationHandler):
     # Generate a unique name for listq's:
 
     def _get_targets_listq(self):
-        return ListQueue('follow_targets', self.app_account)
+        return ListQueue(self.app_account, 'follow_targets')
 
     # Follower list 'flist' processing methods:
 
