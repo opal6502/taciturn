@@ -61,6 +61,7 @@ class SoundcloudHandler(FollowerApplicationHandler):
             self._google_login_headless_mode()
         else:
             self._google_login_headed_mode()
+        sleep(5)
         self._google_login_soundcloud_submit()
         self._close_if_pro_lightbox()
 
@@ -108,6 +109,11 @@ class SoundcloudHandler(FollowerApplicationHandler):
             .send_keys(self.app_account.password)
         login_wait.until(EC.element_to_be_clickable(google_pw_next_button_locator))\
             .click()
+
+        if self.haltlogin:
+            self.log.warning("Halting login!")
+            from time import sleep
+            sleep(90000)
 
     def _google_login_soundcloud_submit(self):
         login_wait = self.new_wait(timeout=10)

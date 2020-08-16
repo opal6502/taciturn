@@ -168,7 +168,7 @@ class FacebookHandler(LoginApplicationHandler):
         # locator = (By.XPATH, '(//div[@role="dialog"])[1]//div[@role="textbox" and @contenteditable="true"] | '
         #                     '(//div[@role="dialog"])[2]//div[@role="textbox" and @contenteditable="true"]')
         # new v0.1a xpath: '//h2[text()="Create Post"]/../../..//div[@role="textbox" and @contenteditable="true"]'
-        locator = (By.XPATH, '//h2[text()="Create Post"]/../../..//div[@role="textbox" and @contenteditable="true"]')
+        locator = (By.XPATH, '//span[text()="Create Post"]/../../../..//div[@role="textbox" and @contenteditable="true"]')
         return self.new_wait().until(EC.element_to_be_clickable(locator))
 
     def _page_post_wait_link_loading_invisible(self):

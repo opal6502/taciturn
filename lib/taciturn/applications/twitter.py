@@ -28,7 +28,7 @@ from selenium.common.exceptions import (
 )
 
 from taciturn.applications.base import ApplicationHandlerException
-from taciturn.applications.follower import FollowerApplicationHandler
+from taciturn.applications.follower import FollowerApplicationHandler, ApplicationHandlerEndOfListException
 
 
 class TwitterHandler(FollowerApplicationHandler):
@@ -226,7 +226,7 @@ class TwitterHandler(FollowerApplicationHandler):
             post_wait.until(EC.presence_of_element_located(tweet_image_attached_locator))
             self.log.debug("Tweet image attachment verified.")
 
-        submit_tweet_button_locator = (By.XPATH, '//div[@role="button"]//span[text()="Tweet"]')
+        submit_tweet_button_locator = (By.XPATH, '//div[@role="button"]//span[text()="Tweet"]/../../../div')
         submit_tweet_button_element = post_wait.until(EC.presence_of_element_located(submit_tweet_button_locator))
         self.element_scroll_to(submit_tweet_button_element)
         submit_tweet_button_element.click()
@@ -343,9 +343,9 @@ class TwitterHandler(FollowerApplicationHandler):
                 return flist_next_element
             except TimeoutException:
                 self.log.warning(f"Couldn't scan flist next (try {try_n} of {retries})")
-                sleep(10)
+                # sleep(10) -- default new_wait timeout is 60 seconds!
                 continue
-        raise ApplicationHandlerException("Unable to scan next flist element.")
+        raise ApplicationHandlerEndOfListException("Unable to scan next flist element.")
 
     def flist_is_last(self, flist_entry):
         return False
