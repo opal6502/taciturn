@@ -21,13 +21,18 @@ import sys
 
 from taciturn.job import TaciturnJob
 
-from taciturn.applications.music import TrackData
+from taciturn.applications.music import TrackData, Genres
+from taciturn.applications.bandcamp import BandcampHandler
+from taciturn.applications.facebook import FacebookHandler
+from taciturn.applications.twitter import TwitterHandler
+
 from taciturn.listq import ListQueue
 
 
 class AnvilMesaDailyTrackPost(TaciturnJob):
     __jobname__ = 'anvilmesa_daily_track_post'
     __appnames__ = ['facebook', 'twitter']
+    genre = 'techno'
 
     def __init__(self):
         super().__init__()
@@ -44,20 +49,52 @@ class AnvilMesaDailyTrackPost(TaciturnJob):
             self.log.critical("Job: insufficient configuration.")
             sys.exit(1)
 
+        self.help_me_string = '𝘐 𝘳𝘦𝘢𝘭𝘭𝘺 𝘯𝘦𝘦𝘥 𝘺𝘰𝘶𝘳 𝘩𝘦𝘭𝘱!  ☑️ 𝘭𝘪𝘬𝘦 ☑️ 𝘤𝘰𝘮𝘮𝘦𝘯𝘵 ☑️ 𝘴𝘩𝘢𝘳𝘦'
+        self.genre_tags = Genres.tags_string(self.genre)
+
     def run(self):
         self.log.info("Anvil Mesa Daily Track Post, initializing.")
 
         anvilmesa_user = self.get_taciturn_user('anvilmesa')
         tracks_listq = ListQueue(anvilmesa_user, 'anvilmesa_bandcamp_discog')
 
-        from time import sleep
-        while True:
-            listq_entry = tracks_listq.read_random()
-            track_data = TrackData.from_listq_entry(listq_entry)
+        listq_entry = tracks_listq.read_random()
+        track_data = TrackData.from_listq_entry(listq_entry)
+        track_url = track_data.url
 
-            self.log.info(f"Read track data from listq: {track_data!r}")
-            self.log.info("Press enter for next entry.")
-            input()
+        # re-scrape the album art:
+        bandcamp_handler = BandcampHandler()
+        new_track_data = bandcamp_handler.scrape_page_track_data(track_url)
+        bandcamp_handler.quit()
+
+        author_string = str(new_track_data)
+        img_local_path = new_track_data.img_local
+
+        facebook_post_body = f"{author_string}\n\n{self.help_me_string}\n\n{self.genre_tags}"
+        twitter_post_body = f"{author_string}\n\n{track_url}\n\n{self.help_me_string}\n\n{self.genre_tags}"
+
+        # login to facebook:
+        self.log.info("Job: starting Facebook application handler.")
+
+        facebook_account = self.get_account('facebook')
+        facebook_handler = FacebookHandler(facebook_account)
+        facebook_handler.login()
+        facebook_handler.page_post_create('xANVILMESAx', facebook_post_body, track_url)
+        facebook_handler.quit()
+
+        self.log.info("Job: made Facebook post.")
+
+        # login to twitter:
+        self.log.info("Job: starting Twitter application handler.")
+
+        twitter_account = self.get_account('twitter')
+        twitter_handler = TwitterHandler(twitter_account)
+        twitter_handler.login()
+        twitter_handler.post_tweet(twitter_post_body, img_local_path)
+
+        self.log.info("Job: made tweet.")
+
+        self.log.info("Job: made a daily Anvil Mesa track post!")
 
 
 job = AnvilMesaDailyTrackPost
