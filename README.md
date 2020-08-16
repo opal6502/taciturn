@@ -2,7 +2,7 @@
 
 Taciturn is a Python/Selenium tool and framework for automating social media tasks.
 
-For current development notes, please see my [Evernote Document](https://www.evernote.com/l/AtC6SBcYqJ9Iu6mm9uSS8M5NUJIUPXLQZ7U) on this.  The current development version is v0.2a!  It has some very useful features but has only been used on my personal development system!
+For current development notes, please see my [Evernote Document](https://www.evernote.com/l/AtC6SBcYqJ9Iu6mm9uSS8M5NUJIUPXLQZ7U) on this.  The current development version is ```v0.3a```!  It has some very useful features but has only been used on my personal development system!
 
 This documentation is pretty minimal, but I can make it better upon request!  This is a good, free tool to help kick-start a the social media presence of a project your believe in!
 
@@ -43,58 +43,14 @@ python init_db.py        # initalize db schema and define applications:
 
 ## Administering
 
-The ```bin/taciturn_admin.py``` script is provided to add/remove taciturn users, add/remove application accounts, add/remove names from whitelists/blacklists.
+The ```bin/taciturn_admin.py``` script is provided to add/remove taciturn users, add/remove application accounts, add/remove names from whitelists/blacklists.  You have to provide a taciturn user before running any jobs.
 
-You have to provide a taciturn user and application user before running any jobs.
-
-The ```bin/taciturn_admin.py``` has a command-style syntax and can be run like this:
+Run ```'bin/taciturn_admin.py help'``` to get decent command help: 
 
 ```shell script
 cd $TACITURN_ROOT/bin
 . ../conf/taciturn.sh    # includes venv activate
-python taciturn_admin.py user my_user add     # add a Taciturn user
-python taciturn_admin.py app app_name add     # add an Application (you shouln't have to do this unless you're writing an app handler)
-python taciturn_admin.py 
-```
-
-The admin interface is currently written out as a comment in ```bin/taciturn_admin.py```:
-
-```shell script
-#  taciturn_admin.py app
-#  -- list all apps
-#  taciturn_admin.py app app-name
-#  -- list app
-#  taciturn_admin.py app app-name { add | delete }
-#  -- create/delete app
-#
-#  taciturn_admin.py user
-#  -- list all users
-#  taciturn_admin.py user user-name
-#  -- list user
-#  taciturn_admin.py user user-name { add | delete }
-#  -- create/delete user
-#  taciturn_admin.py user user-name app
-#  -- display all apps/accounts for user
-#  taciturn_admin.py user user-name app app-name
-#  -- display user account for app
-#  taciturn_admin.py user user-name app app-name account
-#  -- display user account for app
-#  taciturn_admin.py user user-name app app-name account account-name
-#  -- display user account for app
-#  taciturn_admin.py user user-name app app-name account account-name { add | delete | password }
-#  -- create/delete/edit user account for app
-#  taciturn_admin.py user user-name app app-name whitelist
-#  -- list user-name's whitelist
-#  taciturn_admin.py user user-name app app-name whitelist account-name
-#  -- list user-name's and app-name's whitelist account account-name
-#  taciturn_admin.py user user-name app app-name whitelist account-name { add | delete }
-#  -- add or delete whitelist entry
-#  taciturn_admin.py user user-name app app-name blacklist
-#  -- list user-name's blacklist
-#  taciturn_admin.py user user-name app app-name blacklist account-name
-#  -- list user-name's and app-name's blacklist account account-name
-#  taciturn_admin.py user user-name app app-name blacklist account-name { add | delete }
-#  -- add or delete blacklist entry
+python taciturn_admin.py help     # get help!
 ```
 
 ## Configuring
@@ -126,6 +82,7 @@ python taciturn_cli.py -u taciturn_user -j twitter_follow -s -t target_account
 I've been developing Taciturn using the webdrivers for Chrome and Firefox on Macintosh.  I've been using SQLite, and just recently PosgreSQL, for a database.  SQLite should probably be good enough for most people.  I welcome help to increase OS and database compatibility!
 
 # License
+
 [GNU General Public License (GPL)](https://www.gnu.org/licenses/) - free to copy and the source code will always be free!
 
 # Donations

@@ -15,32 +15,36 @@
 # along with Tactiurn.  If not, see <https://www.gnu.org/licenses/>.
 
 
+from time import sleep
+
+from selenium.common.exceptions import TimeoutException, NoSuchElementException, StaleElementReferenceException
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
 
-from taciturn.applications.music import MusicScrapingHandler
+from taciturn.applications.music import MusicScrapingHandler, ScrapeException
 
 
 class BandcampHandler(MusicScrapingHandler):
     application_name = 'bandcamp'
     application_url = "https://bandcamp.com"
 
-    def music_scrape_artist(self):
+    def track_scrape_artist(self):
         locator = (By.XPATH, '//*[@id="name-section"]/h3/span[@itemprop="byArtist"]/a')
         return self.new_wait().until(EC.presence_of_element_located(locator)).text
 
-    def music_scrape_title(self):
+    def track_scrape_title(self):
         locator = (By.XPATH, '//*[@id="name-section"]/h2[@class="trackTitle"]')
         return self.new_wait().until(EC.presence_of_element_located(locator)).text
 
-    def music_scrape_album(self):
+    def track_scrape_album(self):
         locator = (By.XPATH, '//*[@id="name-section"]/h3/span[1]/a/span[@class="fromAlbum" and @itemprop="name"]')
         try:
             return self.new_wait(timeout=2).until(EC.presence_of_element_located(locator)).text
-        except TimeoutError:
+        except TimeoutException:
             return None
 
-    def music_scrape_art_url(self):
+    def track_scrape_art_url(self):
         small_image_locator = (By.XPATH, '//*[@id="tralbumArt"]/a/img')
         large_image_locator = (By.XPATH, '//img[@id="popupimage_image"]')
 
@@ -54,3 +58,79 @@ class BandcampHandler(MusicScrapingHandler):
 
         return large_image_url
 
+    def artist_scrape_all_tracks(self, artist_url):
+        self.driver.get(artist_url)
+
+        discography_link_locator = (By.XPATH, 'xpath=//a[contains(text(),"discography")]')
+
+        # If there's a 'discography' link, click on it.  If not, we must already be on the right page.
+        try:
+            discography_link_element = self.driver.find_element(*discography_link_locator)
+            self.element_scroll_to(discography_link_element)
+            discography_link_element.click()
+        except NoSuchElementException:
+            pass
+
+        # now, we should be in artist discog view ...
+        # start by scanning all discog entries ...
+
+        # //ol[@id="music-grid"]/li[N]/a/div/img      --
+        # xpath=//span[contains(.,"Digital Track")]   -- present on track page
+
+        all_tracks = list()
+
+        discog_entries_locator = (By.CSS_SELECTOR, '.music-grid-item a')
+        is_track_locator = (By.XPATH, '//span[contains(.,"Digital Track")]')
+        # track_list_locator = (By.CSS_SELECTOR, '.track_row_view .track-title')
+        track_links_locator = (By.XPATH, '//table[@id="track_table"]/tbody/tr/td[3]/div/a')
+
+        open_tab_chord = Keys.COMMAND + 't' + Keys.ENTER
+
+        scraper_wait = self.new_wait(timeout=30)
+        discog_entries_elements = scraper_wait.until(EC.presence_of_all_elements_located(discog_entries_locator))
+        main_window = self.driver.current_window_handle
+
+        for discog_entry in discog_entries_elements:
+            self.element_scroll_to(discog_entry)
+
+            discog_entry.send_keys(open_tab_chord)
+            self.driver.switch_to_window(self.driver.window_handles[1])
+            sleep(5)
+
+            # determine if it's a single track or album
+            try:
+                self.new_wait(timeout=2).until(EC.presence_of_element_located(is_track_locator))
+                self.log.debug("This looks like a track page!")
+                is_track_page = True
+            except (NoSuchElementException, TimeoutException):
+                self.log.debug("This looks like an album page!")
+                is_track_page = False
+
+            if is_track_page is True:
+                # if track, just scrape data:
+                track_data = self.scrape_page_track_data(download_image=False)
+                self.log.debug(f"Scraped track data: {track_data!r}")
+                all_tracks.append(track_data)
+            else:
+                # if album, iterate over each individual track and scrape:
+                track_links = scraper_wait.until(EC.presence_of_all_elements_located(track_links_locator))
+
+                for track_link in track_links:
+                    # open track in new tab:
+                    self.element_scroll_to(track_link)
+                    # open link in new tab:
+                    track_link.send_keys(open_tab_chord)
+                    self.driver.switch_to_window(self.driver.window_handles[2])
+                    sleep(1)
+
+                    track_data = self.scrape_page_track_data(download_image=False)
+                    self.log.debug(f"Scraped track data: {track_data!r}")
+                    all_tracks.append(track_data)
+
+                    self.driver.close()
+                    self.driver.switch_to_window(self.driver.window_handles[1])
+
+            self.driver.close()
+            self.driver.switch_to_window(self.driver.window_handles[0])
+
+        return all_tracks

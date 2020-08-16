@@ -26,6 +26,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from sqlalchemy import and_
 
 from taciturn.applications.base import ApplicationHandlerException
+from taciturn.listq import ListQueue
 from taciturn.datetime import datetime_now_tz
 
 from taciturn.applications.login import (
@@ -34,6 +35,7 @@ from taciturn.applications.login import (
     ApplicationHandlerUserPrivilegeSuspendedException
 )
 
+from taciturn.db.base import TaciturnUser
 from taciturn.db.followers import (
     Follower,
     Following,
@@ -53,11 +55,22 @@ class FollowerApplicationHandler(LoginApplicationHandler):
 
     def __init__(self, app_account, handler_stats=None, driver=None):
         super().__init__(app_account, handler_stats, driver)
+        self.targets_listq = None
 
         config_name = 'app:'+self.application_name
         self.follow_back_hiatus = self.config[config_name]['follow_back_hiatus']
         self.unfollow_hiatus = self.config[config_name]['unfollow_hiatus']
         self.mutual_expire_hiatus = self.config[config_name]['mutual_expire_hiatus']
+
+        self.use_listq = self.options.listq
+        if self.use_listq is True:
+            self.targets_listq = self._get_targets_listq()
+
+        len_targets_listq = len(self.targets_listq)
+        if len_targets_listq == 0:
+            raise RuntimeError("Follow targets listq is empty.")
+        if len_targets_listq < 5:
+            self.log.warning(f"Follow targets listq only has {len_targets_listq} entries.")
 
         self.flist_postition = 1  # using xpath indexing, starts from 1!
         self.flist_mode = None  # 'follower' or 'following'!
@@ -126,6 +139,11 @@ class FollowerApplicationHandler(LoginApplicationHandler):
                         established=datetime_now_tz(),
                         application_id=self.app_account.application_id,
                         taciturn_user_id=self.app_account.taciturn_user_id)
+
+    # Generate a unique name for listq's:
+
+    def _get_targets_listq(self):
+        return ListQueue('follow_targets', self.app_account)
 
     # Follower list 'flist' processing methods:
 
@@ -290,10 +308,15 @@ class FollowerApplicationHandler(LoginApplicationHandler):
 
         return self.new_wait(timeout=90).until(_button_text_in_not_following)
 
-    def start_following(self, target_account, quota=None, unfollow_hiatus=None):
+    def start_following(self, target_account=None, quota=None, unfollow_hiatus=None):
         "A generalized start_following method, made to be application-agnostic."
         self.log.info("Starting user following session.")
         self.log.debug(f"Following quota = {quota or 'n/a'}")
+
+        if self.use_listq:
+            target_account = self.targets_listq.read_random()
+            self.log.info(f"listq target = '{target_account}'")
+
         self.goto_followers_page(target_account)
         if self.flist_start_reload:
             self.driver.refresh()

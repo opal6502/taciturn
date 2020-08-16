@@ -40,6 +40,8 @@ def parse_arguments(args=None):
                     help="job to run, with arguments for job")
     ap.add_argument('-t', '--target', type=str, nargs=1, default=None,
                     help="Target account")
+    ap.add_argument('-L', '--listq', action='store_true',
+                    help="Pull target accounts for 'user' from a listq.")
     ap.add_argument('-m', '--max', type=int,
                     help="Maximum follows per 24-hour period, divided into quota rounds")
     ap.add_argument('-q', '--quota', type=int,
