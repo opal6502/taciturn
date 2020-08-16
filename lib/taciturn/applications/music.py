@@ -115,6 +115,19 @@ class TrackData(ListQueueEntry):
             track_url=self.url
         )
 
+    @classmethod
+    def from_listq_entry(cls, listq_entry):
+        new_track_data = cls(
+            artist=listq_entry.track_artist,
+            title=listq_entry.track_title,
+            album=listq_entry.track_album,
+            label=listq_entry.track_label,
+            url=listq_entry.track_url,
+            img_local=None
+        )
+        return new_track_data
+
+
 # it's important to order these tags by priority so that when twitter truncates the list, the best possible combo
 # is still present, and 30 max for facebook, not sure about instagram:
 

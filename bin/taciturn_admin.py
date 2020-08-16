@@ -59,9 +59,9 @@ _help_app_command = """'app' commands:
   app
      - list all apps
   app {app-name}
-     - list 'app-name'
+     - list '{app-name}'
   app {add|delete} {app-name}
-     - add or delete 'app-name'
+     - add or delete '{app-name}'
 
 It is unlikely you'll ever need to use this unless you're writing your own application handler.
 """
@@ -224,6 +224,7 @@ def run_command(args):
             raise TaciturnAdminSyntaxError("Syntax error")
 
         if len_args == 7:
+            print("len_args == 7")
             if acct_verb == 'add':
                 return user_account_add(user_name, app_name, acct_name_edit)
             if acct_verb == 'delete':
@@ -431,7 +432,6 @@ def _get_users(user_name=None):
     return session.query(TaciturnUser)
 
 
-
 ###################################################################################################################
 # accounts functions
 ###################################################################################################################
@@ -481,7 +481,9 @@ def user_account_add(user_name, app_name, account_name):
 
     app = _get_app(app_name)
     user = _get_user(user_name)
+
     if not _validate_app_and_user(user_name, user, app_name, app):
+        print("Not valid!")
         return False
 
     account_password = input_account_password()
@@ -535,8 +537,6 @@ def _get_account(user_name, app_name, account_name):
                      Application.name == app_name,
                      AppAccount.taciturn_user_id == TaciturnUser.id,
                      AppAccount.application_id == Application.id)).one_or_none()
-    if account is None:
-        print(f"No account '{account_name}' for user '{user_name}' on app '{app_name}'", file=sys.stderr)
     return account
 
 
@@ -960,6 +960,7 @@ def _validate_app_and_user(user_name, user, app_name, app):
     if user is None:
         print(f"No such user '{user_name}'", file=sys.stderr)
         return False
+    return True
 
 
 def input_account_password():

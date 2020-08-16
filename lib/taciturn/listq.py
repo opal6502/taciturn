@@ -19,7 +19,7 @@ from math import floor
 
 from abc import ABC, abstractmethod
 
-from sqlalchemy import and_
+from sqlalchemy import and_, nullsfirst, nullslast
 from sqlalchemy.sql.expression import func
 from sqlalchemy.inspection import inspect
 
@@ -73,11 +73,14 @@ class ListQueue:
 
     def _if_empty_exception(self):
         self_len = len(self)
+        self._log.debug(f"ListQueue._if_empty_exception self_len = {self_len}")
         if self_len == 0:
             raise ListQueueEmpty("Listq is empty.")
         return self_len
 
     def __len__(self):
+        listq_len = self._query_entries().count()
+        self._log.debug(f"ListQueue.__len__ = {listq_len}")
         return self._query_entries().count()
 
     def _query_entries(self):
@@ -85,9 +88,9 @@ class ListQueue:
 
     def _query_entries_order_by_date(self, desc=False):
         if desc:
-            return self._query_entries().order_by(ListQueueEntry.established.desc())
+            return self._query_entries().order_by(nullslast(ListQueueEntry.established.desc()))
         else:
-            return self._query_entries().order_by(ListQueueEntry.established)
+            return self._query_entries().order_by(nullsfirst(ListQueueEntry.established))
 
     def _query_entries_order_by_read(self, desc=False):
         if desc:
@@ -164,6 +167,8 @@ class ListQueue:
         row_count = len(self)
         fraction_limit = floor(row_count * self._random_older_offset_fraction)
 
+        self._log.debug(f"row_count = {row_count}, fraction_limit = {fraction_limit}")
+
         # if the list is too small for the fraction_offset to make a difference:
         if row_count - fraction_limit <= 2:
             listq_entry = self._query_entries().order_by(func.random()).first()
@@ -171,12 +176,17 @@ class ListQueue:
             return listq_entry
 
         oldest_portion_subquery = self._session.query(ListQueueEntry.id)\
-            .limit(fraction_limit)\
-            .order_by(ListQueueEntry.last_read)\
+            .limit(fraction_limit).from_self()\
+            .order_by(nullsfirst(ListQueueEntry.last_read))\
             .subquery()
-        listq_entry = self._session.query(ListQueueEntry).filter(ListQueueEntry.id.in_(oldest_portion_subquery))\
+
+        self._log.debug("oldest_portion_subquery string: "+str(oldest_portion_subquery))
+
+        listq_entry = self._session.query(ListQueueEntry)\
+                                   .filter(ListQueueEntry.id.in_(oldest_portion_subquery))\
             .order_by(func.random())\
             .first()
+
         self._process_read(listq_entry)
         return listq_entry
 
@@ -184,6 +194,9 @@ class ListQueue:
         all_listq_entries = self._query_entries()
         all_listq_entries.delete()
         self._session.commit()
+
+# Debug queries:
+# SELECT listq_entry.id, reads_left, last_read, established, track_title, track_album FROM listq_entry INNER JOIN listq_track_data ON listq_entry.id = listq_track_data.id ORDER BY last_read ASC;
 
 
 # make a container class listq-compatible:

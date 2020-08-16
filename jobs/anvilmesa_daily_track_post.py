@@ -21,13 +21,13 @@ import sys
 
 from taciturn.job import TaciturnJob
 
-from taciturn.applications.bandcamp import BandcampHandler
+from taciturn.applications.music import TrackData
 from taciturn.listq import ListQueue
 
 
-class BandcampScrapeArtistTracks(TaciturnJob):
-    __jobname__ = 'bandcamp_scan_artist_tracks'
-    __appnames__ = []
+class AnvilMesaDailyTrackPost(TaciturnJob):
+    __jobname__ = 'anvilmesa_daily_track_post'
+    __appnames__ = ['facebook', 'twitter']
 
     def __init__(self):
         super().__init__()
@@ -44,36 +44,20 @@ class BandcampScrapeArtistTracks(TaciturnJob):
             self.log.critical("Job: insufficient configuration.")
             sys.exit(1)
 
-        self.username = self.options.user[0]
-        self.artist_link = 'https://anvilmesa.bandcamp.com/music'
-
-        self.taciturn_user = self.get_taciturn_user(self.username)
-
     def run(self):
-        # Step 1: scrape the bandcamp track info:
+        self.log.info("Anvil Mesa Daily Track Post, initializing.")
 
-        self.log.info("Job: starting Bandcamp application handler.")
-
-        bandcamp_handler = BandcampHandler()
-
-        all_tracks = bandcamp_handler.artist_scrape_all_tracks(self.artist_link)
-
-        import pprint
-
-        print("All tracks:")
-        pprint.pprint(all_tracks)
-
-        # now, add all tracks to a listq:
         anvilmesa_user = self.get_taciturn_user('anvilmesa')
         tracks_listq = ListQueue(anvilmesa_user, 'anvilmesa_bandcamp_discog')
 
-        print("Clearing listq contents!")
-        tracks_listq.clear()
+        from time import sleep
+        while True:
+            listq_entry = tracks_listq.read_random()
+            track_data = TrackData.from_listq_entry(listq_entry)
 
-        for track_data in all_tracks:
-            print(f"Adding {track_data!r} to listq.")
-            tracks_listq.append(track_data.to_listq_entry())
+            self.log.info(f"Read track data from listq: {track_data!r}")
+            self.log.info("Press enter for next entry.")
+            input()
 
-        print("Done.")
 
-job = BandcampScrapeArtistTracks
+job = AnvilMesaDailyTrackPost
