@@ -104,6 +104,10 @@ default_config = {
         'daily_max_unfollows': 50,
         'round_max_unfollows': 50,
     },
+    'app:facebook': {
+        # 1-2 minutes:
+        'action_timeout': (1000*60, 1000*60*2),
+    }
 }
 
 supported_applications = (

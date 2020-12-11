@@ -110,8 +110,8 @@ class FacebookHandler(LoginApplicationHandler):
         return overhang_y_corrected
 
     def _page_post_get_first(self):
-        locator = (By.XPATH, '//div[@data-testid="Keycommand_wrapper_feed_story"]'
-                             '/div[@data-testid="Keycommand_wrapper"]/div[@aria-posinset="1"]')
+        # locator = (By.XPATH, '//div[@aria-posinset="1"]')
+        locator = (By.XPATH, '(//div[@aria-label="Page Admin Content"]//div[@role="main"]/div/div[1])[4]')
         return self.new_wait().until(EC.presence_of_element_located(locator))
 
     def _page_element_rescroll(self, page_element):
@@ -125,13 +125,13 @@ class FacebookHandler(LoginApplicationHandler):
         for try_n in range(1, retries+1):
             try:
                 # this bit of voodoo IS REQUIRED for the post link to become visible:
-                post_date_locator = (By.XPATH, './/span[text()="·"]/../preceding-sibling::span//div/span')
+                post_date_locator = (By.XPATH, '(.//span[contains(text(),"·")]/../../following-sibling::span)[1]')
                 post_date_element = post_wait.until(EC.element_to_be_clickable(post_date_locator))
 
                 self._page_element_rescroll(post_date_element)
                 ActionChains(self.driver).move_to_element(post_date_element).perform()
 
-                post_link_locator = (By.XPATH, './/span[text()="·"]/../../../..//span/a')
+                post_link_locator = (By.XPATH, '(.//span[contains(text(),"·")]/../../following-sibling::span)[1]//a')
                 post_link_element = post_wait.until(EC.presence_of_element_located(post_link_locator))
 
                 post_link_href = post_link_element.get_attribute('href')
@@ -165,10 +165,17 @@ class FacebookHandler(LoginApplicationHandler):
         raise ApplicationHandlerException(f"Unable to start new page post after {retries} tries.")
 
     def _page_post_input(self):
+        return self._generic_post_input()
+
+    def _group_post_input(self):
+        return self._generic_post_input()
+
+    def _generic_post_input(self):
         # locator = (By.XPATH, '(//div[@role="dialog"])[1]//div[@role="textbox" and @contenteditable="true"] | '
         #                     '(//div[@role="dialog"])[2]//div[@role="textbox" and @contenteditable="true"]')
         # new v0.1a xpath: '//h2[text()="Create Post"]/../../..//div[@role="textbox" and @contenteditable="true"]'
-        locator = (By.XPATH, '//span[text()="Create Post"]/../../../..//div[@role="textbox" and @contenteditable="true"]')
+        locator = (By.XPATH, '//span[text()="Create Post"]/../../../../../..'
+                             '//div[@role="textbox" and @contenteditable="true"]')
         return self.new_wait().until(EC.element_to_be_clickable(locator))
 
     def _page_post_wait_link_loading_invisible(self):
@@ -185,7 +192,7 @@ class FacebookHandler(LoginApplicationHandler):
         return self.new_wait(timeout=90).until(EC.element_to_be_clickable(locator))
 
     def _page_post_submit_button(self):
-        locator = (By.XPATH, '//*[starts-with(@id,"mount")]//div[text()="Post"]')
+        locator = (By.XPATH, '//*[starts-with(@id,"mount")]//span[text()="Post"]')
         return self.new_wait().until(EC.element_to_be_clickable(locator))
 
     def _page_post_submit_new(self, post_body, post_link=None, retries=FACEBOOK_ACTION_RETRIES):
@@ -202,6 +209,18 @@ class FacebookHandler(LoginApplicationHandler):
                     self.log.debug("Submit new Facebook page post: inserting post link.")
                     post_input.send_keys(post_link + ' ')
 
+                    # check for the odd "Query Error" dialog lightbox:
+                    try:
+                        self.log.debug("Checking for 'Query Error' message.")
+                        query_error_locator = (By.XPATH, '//span[text()="Query Error"]')
+                        self.new_wait(timeout=5).until(EC.presence_of_element_located(query_error_locator))
+
+                        query_error_button_locator = (By.XPATH, '//div[@role="button" and text()="OK"]')
+                        self.new_wait(timeout=5).until(EC.element_to_be_clickable(query_error_button_locator))\
+                            .click()
+                    except TimeoutException:
+                        self.log.debug("No 'Query Error' detected!")
+
                     # wait for preview indicators, after much trying this isn't as robust as a sleep(10)?
                     # self.log.debug("Submit new Facebook page post: waiting for link to be loaded by Facebook.")
                     # self._page_post_wait_link_loading_invisible()
@@ -217,6 +236,7 @@ class FacebookHandler(LoginApplicationHandler):
 
                 self.log.debug("Submit new Facebook page post: submitting new post.")
                 self._page_post_submit_button().click()
+                sleep(10)
 
                 return
             except (TimeoutException, ElementClickInterceptedException):
@@ -225,7 +245,8 @@ class FacebookHandler(LoginApplicationHandler):
                 self.kill_javascript_alert()
                 continue
 
-        raise ApplicationHandlerException(f"Submit new Facebook page post: couldn't submit page post after {retries} tries.")
+        raise ApplicationHandlerException(f"Submit new Facebook page post: "
+                                          f"couldn't submit page post after {retries} tries.")
 
     def _page_post_verify_new(self, previous_first_post_link, retries=FACEBOOK_ACTION_RETRIES):
         self.log.info("Verify new Facebook page post: verifying new page post present.")
@@ -254,3 +275,113 @@ class FacebookHandler(LoginApplicationHandler):
         self._page_post_submit_new(post_body, post_link)
         # self.driver.refresh()
         return self._page_post_verify_new(page_post_first_link)
+
+    def _group_post_start_new(self, retries=FACEBOOK_ACTION_RETRIES):
+        post_wait = self.new_wait(timeout=2)
+
+        for try_n in range(1, retries+1):
+            try:
+                new_post_button_locator = (By.XPATH, '//div[@role="button"]'
+                                                     '//span[starts-with(text(), "What\'s on your mind")]')
+                new_post_button_element = post_wait.until(EC.element_to_be_clickable(new_post_button_locator))
+                self.element_scroll_to(new_post_button_element, y_offset=300)
+                new_post_button_element.click()
+                return
+            except (TimeoutException, ElementClickInterceptedException):
+                pass
+
+        raise ApplicationHandlerException(f"Unable to start new page post after {retries} tries.")
+
+    def _group_post_submit_button(self):
+        locator = (By.XPATH, '//*[starts-with(@id,"mount")]//div[@role="button"]//span[text()="Post"]')
+        return self.new_wait().until(EC.element_to_be_clickable(locator))
+
+    def _group_post_message_limit_reached(self):
+        locator = (By.XPATH, '//div[starts-with(text(), "We limit how often you can post, '
+                             'comment or do other things in a given amount of time")]')
+        try:
+            self.new_wait(timeout=5).until(EC.presence_of_element_located(locator))
+            return True
+        except TimeoutException:
+            return False
+
+    def _group_post_submit_new(self, post_body, post_link=None, retries=FACEBOOK_ACTION_RETRIES):
+        for try_n in range(1, retries+1):
+            try:
+                self.log.info(f"Submit new Facebook group post: creating new.")
+                # start new post:
+                self._group_post_start_new()
+                post_input = self._group_post_input()
+                if post_link:
+                    self.log.debug("Submit new Facebook group post: inserting post link.")
+                    post_input.send_keys(post_link + ' ')
+                    sleep(10)
+                    post_input.send_keys(Keys.COMMAND + 'a')
+                    post_input.send_keys(Keys.BACKSPACE)
+
+                self.log.debug("Submit new Facebook page post: sending post body.")
+                post_input.send_keys(post_body)
+
+                self.log.debug("Submit new Facebook page post: submitting new post.")
+                self._group_post_submit_button().click()
+                sleep(10)
+
+                # check to see if posting limit has been reached:
+                if self._group_post_message_limit_reached():
+                    raise ApplicationFacebookPostLimitException
+
+                # wait for input to become invisible:
+                self.new_wait().until(EC.invisibility_of_element(post_input))
+
+                return
+            except (TimeoutException, ElementClickInterceptedException):
+                self.log.exception(f"Submit new Facebook group post: caught exception! (try {try_n} of {retries})")
+                self.driver.refresh()
+                self.kill_javascript_alert()
+                continue
+
+        raise ApplicationHandlerException(f"Submit new Facebook group post: "
+                                          f"couldn't submit page post after {retries} tries.")
+
+    def group_post_create(self, group_path_name, post_body, post_link=None):
+        if (group_path_name.startswith('http://') or
+                group_path_name.startswith('https://')):
+            self.driver.get(group_path_name)
+        else:
+            self.goto_path(f'groups/{group_path_name}')
+        self._group_post_submit_new(post_body, post_link)
+
+    def scan_page_videos(self, page_path):
+        self.goto_path(f'{page_path}/videos')
+
+        first_video_entry_locator = (By.XPATH, '//span[text()="All Videos"]/../../div/div/div/div[1]')
+        video_entry_link_locator = (By.XPATH, '(.//a)[1]')
+        video_entry_title_locator = (By.XPATH, '(.//a)[2]/span/span')
+        next_video_entry_locator = (By.XPATH, './following-sibling::div[1]')
+
+        # get the first entry:
+        video_entry = self.new_wait().until(EC.presence_of_element_located(first_video_entry_locator))
+        video_url_list = list()
+
+        while True:
+            self.element_scroll_to(video_entry)
+            video_wait = self.new_wait(video_entry, timeout=10)
+
+            try:
+                video_title = video_wait.until(EC.presence_of_element_located(video_entry_title_locator)).text
+                self.log.info(f"Scanning video '{video_title}'")
+                video_link_element = video_wait.until(EC.presence_of_element_located(video_entry_link_locator))
+                video_link_url = video_link_element.get_attribute('href')
+            except TimeoutException:
+                self.log.info("End of video list encountered.")
+                break
+
+            video_url_list.append(video_link_url)
+            sleep(0.33)
+            video_entry = video_wait.until(EC.presence_of_element_located(next_video_entry_locator))
+
+        return video_url_list
+
+
+class ApplicationFacebookPostLimitException(ApplicationHandlerException):
+    pass

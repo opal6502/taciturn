@@ -26,7 +26,7 @@ from sqlalchemy.inspection import inspect
 from sqlalchemy.orm.exc import NoResultFound
 
 from taciturn.config import get_session, get_logger
-from taciturn.db.listq import ListQueues, ListQueueEntry
+from taciturn.db.listq import ListQueues, ListQueueEntry, UrlListqEntry
 
 from taciturn.datetime import datetime_now_tz
 
@@ -175,17 +175,19 @@ class ListQueue:
             self._process_read(listq_entry)
             return listq_entry
 
-        oldest_portion_subquery = self._session.query(ListQueueEntry.id)\
+        oldest_portion_subquery = self._session.query(ListQueueEntry.id) \
+            .filter(ListQueueEntry.listq_id == self._id)\
             .limit(fraction_limit).from_self()\
             .order_by(nullsfirst(ListQueueEntry.last_read))\
             .subquery()
 
-        self._log.debug("oldest_portion_subquery string: "+str(oldest_portion_subquery))
-
-        listq_entry = self._session.query(ListQueueEntry)\
+        listq_query = self._session.query(ListQueueEntry)\
                                    .filter(ListQueueEntry.id.in_(oldest_portion_subquery))\
-            .order_by(func.random())\
-            .first()
+            .order_by(func.random())
+
+        listq_entry = listq_query.first()
+
+        self._log.debug("read_random query string: "+str(listq_query))
 
         self._process_read(listq_entry)
         return listq_entry

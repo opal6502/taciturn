@@ -84,7 +84,7 @@ class BandcampHandler(MusicScrapingHandler):
         # track_list_locator = (By.CSS_SELECTOR, '.track_row_view .track-title')
         track_links_locator = (By.XPATH, '//table[@id="track_table"]/tbody/tr/td[3]/div/a')
 
-        open_tab_chord = Keys.COMMAND + 't' + Keys.ENTER
+        open_tab_chord = self.open_tab_chord()
 
         scraper_wait = self.new_wait(timeout=30)
         discog_entries_elements = scraper_wait.until(EC.presence_of_all_elements_located(discog_entries_locator))

@@ -62,13 +62,7 @@ class AnvilMesaDailyTrackPost(TaciturnJob):
         track_data = TrackData.from_listq_entry(listq_entry)
         track_url = track_data.url
 
-        # re-scrape the album art:
-        bandcamp_handler = BandcampHandler()
-        new_track_data = bandcamp_handler.scrape_page_track_data(track_url)
-        bandcamp_handler.quit()
-
-        author_string = str(new_track_data)
-        img_local_path = new_track_data.img_local
+        author_string = str(track_data)
 
         facebook_post_body = f"{author_string}\n\n{self.help_me_string}\n\n{self.genre_tags}"
         twitter_post_body = f"{author_string}\n\n{track_url}\n\n{self.help_me_string}\n\n{self.genre_tags}"
@@ -90,7 +84,8 @@ class AnvilMesaDailyTrackPost(TaciturnJob):
         twitter_account = self.get_account('twitter')
         twitter_handler = TwitterHandler(twitter_account)
         twitter_handler.login()
-        twitter_handler.post_tweet(twitter_post_body, img_local_path)
+        twitter_handler.post_tweet(twitter_post_body)
+        twitter_handler.quit()
 
         self.log.info("Job: made tweet.")
 

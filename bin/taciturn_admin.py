@@ -179,8 +179,9 @@ def run_command(args):
         _s, app_verb, app_name_edit, *_e = _args
         _s, app_name_list, *_e = _args
 
-        if ((not 1 <= len_args <= 2) or
-                len_args == 3 and (app_verb != 'add' or app_verb != 'delete')):
+        if (not 1 <= len_args <= 3
+                or len_args == 3 and not (app_verb == 'add' or app_verb == 'delete')
+                or len_args > 3):
             print(_help_app_command, file=sys.stderr)
             raise TaciturnAdminSyntaxError("Syntax error")
 

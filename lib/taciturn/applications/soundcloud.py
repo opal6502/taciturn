@@ -30,14 +30,14 @@ from selenium.common.exceptions import (
 
 from taciturn.applications.base import ApplicationHandlerException
 from taciturn.applications.follower import FollowerApplicationHandler
+from taciturn.applications.google import GoogleLoginMixin
 
 
-class SoundcloudHandler(FollowerApplicationHandler):
+class SoundcloudHandler(FollowerApplicationHandler, GoogleLoginMixin):
     application_name = 'soundcloud'
 
     application_url = "https://soundcloud.com"
     application_login_url = application_url
-    google_login_url = 'https://accounts.google.com/Login'
 
     application_asset_dirname = 'soundcloud'
     default_profile_image = 'avatars-default-500x500.jpg'
@@ -57,10 +57,7 @@ class SoundcloudHandler(FollowerApplicationHandler):
             self.headless_mode = False
 
     def login(self):
-        if self.headless_mode:
-            self._google_login_headless_mode()
-        else:
-            self._google_login_headed_mode()
+        self._google_login()
         sleep(5)
         self._google_login_soundcloud_submit()
         self._close_if_pro_lightbox()
@@ -71,49 +68,6 @@ class SoundcloudHandler(FollowerApplicationHandler):
         self.new_wait().until(EC.presence_of_element_located(messages_element_verify_locator))
 
         self.log.info("Logged in.")
-
-    def _google_login_headless_mode(self):
-        login_wait = self.new_wait(timeout=10)
-        self.log.info("Logging in to Soundcloud through Google, headless browser mode.")
-        self.driver.get(self.google_login_url)
-
-        google_login_email_locator = (By.CSS_SELECTOR, '#Email')
-        google_login_next_locator = (By.CSS_SELECTOR, '#next')
-        google_login_password_locator = (By.CSS_SELECTOR, '#password')
-        google_login_submit_locator = (By.CSS_SELECTOR, '#submit')
-
-        login_wait.until(EC.element_to_be_clickable(google_login_email_locator))\
-            .send_keys(self.app_account.name)
-        login_wait.until(EC.element_to_be_clickable(google_login_next_locator))\
-            .click()
-        login_wait.until(EC.element_to_be_clickable(google_login_password_locator))\
-            .send_keys(self.app_account.password)
-        login_wait.until(EC.element_to_be_clickable(google_login_submit_locator))\
-            .click()
-
-    def _google_login_headed_mode(self):
-        login_wait = self.new_wait(timeout=10)
-        self.log.info("Logging in to Soundcloud through Google, headed browser mode.")
-        self.driver.get(self.google_login_url)
-
-        google_name_field_locator = (By.XPATH, '//input[@id="identifierId"]')
-        google_id_next_button_locator = (By.XPATH, '//*[@id="identifierNext"]//button')
-        google_password_field_locator = (By.XPATH, '//input[@name="password"]')
-        google_pw_next_button_locator = (By.XPATH, '//*[@id="passwordNext"]//button')
-
-        login_wait.until(EC.element_to_be_clickable(google_name_field_locator))\
-            .send_keys(self.app_account.name)
-        login_wait.until(EC.element_to_be_clickable(google_id_next_button_locator))\
-            .click()
-        login_wait.until(EC.element_to_be_clickable(google_password_field_locator))\
-            .send_keys(self.app_account.password)
-        login_wait.until(EC.element_to_be_clickable(google_pw_next_button_locator))\
-            .click()
-
-        if self.haltlogin:
-            self.log.warning("Halting login!")
-            from time import sleep
-            sleep(90000)
 
     def _google_login_soundcloud_submit(self):
         login_wait = self.new_wait(timeout=10)

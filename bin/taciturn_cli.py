@@ -43,9 +43,9 @@ def parse_arguments(args=None):
     ap.add_argument('-L', '--listq', action='store_true',
                     help="Pull target accounts for 'user' from a listq.")
     ap.add_argument('-m', '--max', type=int,
-                    help="Maximum follows per 24-hour period, divided into quota rounds")
+                    help="Provide maximum value to job, integer")
     ap.add_argument('-q', '--quota', type=int,
-                    help="Quota of follows per each round in a 24-hour period")
+                    help="Provide a quota value to job, integer")
     ap.add_argument('-s', '--stop', action='store_true',
                     help="Stop job if round quota can't be fulfilled")
     ap.add_argument('-H', '--haltlogin', action='store_true',
@@ -60,6 +60,8 @@ def parse_arguments(args=None):
                     help="Specify a musical genre, for the 'rbg_bandcamp_post' job")
     ap.add_argument('-I', '--noinstagram', action='store_true',
                     help="Do not post to instagram, for the 'rbg_bandcamp_post' job")
+    ap.add_argument('-f', '--inputfile', type=str, nargs=1,
+                    help="Provide an input file to job")
 
     pa = ap.parse_args(args)
 
