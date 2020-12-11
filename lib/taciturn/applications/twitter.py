@@ -41,7 +41,7 @@ class TwitterHandler(FollowerApplicationHandler):
     default_profile_image = 'default_profile_reasonably_small.png'
 
     button_text_following = ('Following', 'Pending', 'Cancel', 'Unfollow')
-    button_text_not_following = ('Follow',)
+    button_text_not_following = ('Follow', 'Unblock', 'Blocked')
 
     def __init__(self, app_account, handler_stats=None, driver=None):
         super().__init__(app_account, handler_stats, driver)
@@ -367,7 +367,7 @@ class TwitterHandler(FollowerApplicationHandler):
 
     def flist_username(self, flist_entry):
         locator = self._flist_username_locator()
-        return self.new_wait(flist_entry).until(EC.presence_of_element_located(locator)).text
+        return self.new_wait(flist_entry).until(lambda _: flist_entry.find_element(*locator).text)
 
     def _flist_username_locator(self):
         return (By.XPATH, './/div/span[starts-with(text(), "@")] | '

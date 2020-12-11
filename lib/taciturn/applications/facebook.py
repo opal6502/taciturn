@@ -110,8 +110,7 @@ class FacebookHandler(LoginApplicationHandler):
         return overhang_y_corrected
 
     def _page_post_get_first(self):
-        locator = (By.XPATH, '//div[@data-testid="Keycommand_wrapper_feed_story"]'
-                             '/div[@data-testid="Keycommand_wrapper"]/div[@aria-posinset="1"]')
+        locator = (By.XPATH, '//div[@aria-posinset="1"]')
         return self.new_wait().until(EC.presence_of_element_located(locator))
 
     def _page_element_rescroll(self, page_element):
@@ -125,13 +124,14 @@ class FacebookHandler(LoginApplicationHandler):
         for try_n in range(1, retries+1):
             try:
                 # this bit of voodoo IS REQUIRED for the post link to become visible:
-                post_date_locator = (By.XPATH, './/span[text()="·"]/../preceding-sibling::span//div/span')
+                # post_date_locator = (By.XPATH, './/span[text()="·"]/../preceding-sibling::span//div/span')
+                post_date_locator = (By.XPATH, '(.//span[contains(text(),"·")]/../../following-sibling::span)[1]')
                 post_date_element = post_wait.until(EC.element_to_be_clickable(post_date_locator))
 
                 self._page_element_rescroll(post_date_element)
                 ActionChains(self.driver).move_to_element(post_date_element).perform()
 
-                post_link_locator = (By.XPATH, './/span[text()="·"]/../../../..//span/a')
+                post_link_locator = (By.XPATH, '(.//span[contains(text(),"·")]/../../following-sibling::span)[1]//a')
                 post_link_element = post_wait.until(EC.presence_of_element_located(post_link_locator))
 
                 post_link_href = post_link_element.get_attribute('href')
@@ -141,7 +141,7 @@ class FacebookHandler(LoginApplicationHandler):
 
                 return urllib.parse.urlparse(post_link_href).path
             except TimeoutException:
-                pass
+                self.log.warning(f"Couldn't get page post link (try {try_n} of {retries})")
 
         raise ApplicationHandlerException(f"Unable to scrape page post link after {retries} tries.")
 
@@ -168,8 +168,9 @@ class FacebookHandler(LoginApplicationHandler):
         # locator = (By.XPATH, '(//div[@role="dialog"])[1]//div[@role="textbox" and @contenteditable="true"] | '
         #                     '(//div[@role="dialog"])[2]//div[@role="textbox" and @contenteditable="true"]')
         # new v0.1a xpath: '//h2[text()="Create Post"]/../../..//div[@role="textbox" and @contenteditable="true"]'
-        locator = (By.XPATH, '//span[text()="Create Post"]/../../../..//div[@role="textbox" and @contenteditable="true"]')
-        return self.new_wait().until(EC.element_to_be_clickable(locator))
+        locator = (By.XPATH, '//span[text()="Create Post"]/../../../../../..'
+                             '//div[@role="textbox" and @contenteditable="true"]')
+        return self.new_wait().until(EC.presence_of_element_located(locator))
 
     def _page_post_wait_link_loading_invisible(self):
         # if the preview loading indicator is visible, give it some time:
@@ -202,6 +203,18 @@ class FacebookHandler(LoginApplicationHandler):
                     self.log.debug("Submit new Facebook page post: inserting post link.")
                     post_input.send_keys(post_link + ' ')
 
+                    # check for the odd "Query Error" dialog lightbox:
+                    try:
+                        self.log.debug("Checking for 'Query Error' message.")
+                        query_error_locator = (By.XPATH, '//span[text()="Query Error"]')
+                        self.new_wait(timeout=5).until(EC.presence_of_element_located(query_error_locator))
+
+                        query_error_button_locator = (By.XPATH, '//div[@role="button" and text()="OK"]')
+                        self.new_wait(timeout=5).until(EC.element_to_be_clickable(query_error_button_locator))\
+                            .click()
+                    except TimeoutException:
+                        self.log.debug("No 'Query Error' detected!")
+
                     # wait for preview indicators, after much trying this isn't as robust as a sleep(10)?
                     # self.log.debug("Submit new Facebook page post: waiting for link to be loaded by Facebook.")
                     # self._page_post_wait_link_loading_invisible()
@@ -217,6 +230,16 @@ class FacebookHandler(LoginApplicationHandler):
 
                 self.log.debug("Submit new Facebook page post: submitting new post.")
                 self._page_post_submit_button().click()
+
+                # check for add chat option, and bypass it:
+                try:
+                    self.log.debug("Checking for customer chat option.")
+                    customer_chat_locator = (By.XPATH, '//div[@aria-label="Chat Directly With Customers"]'
+                                                       '//div[@role="button"]/i')
+                    self.new_wait(timeout=5).until(EC.element_to_be_clickable(customer_chat_locator))\
+                        .click()
+                except TimeoutException:
+                    self.log.debug("No customer chat option detected!")
 
                 return
             except (TimeoutException, ElementClickInterceptedException):

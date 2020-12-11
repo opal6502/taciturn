@@ -26,7 +26,7 @@ class BandcampHandler(MusicScrapingHandler):
     application_url = "https://bandcamp.com"
 
     def music_scrape_artist(self):
-        locator = (By.XPATH, '//*[@id="name-section"]/h3/span[@itemprop="byArtist"]/a')
+        locator = (By.XPATH, '//div[@id="name-section"]/h3/span[2]/a')
         return self.new_wait().until(EC.presence_of_element_located(locator)).text
 
     def music_scrape_title(self):
@@ -34,7 +34,7 @@ class BandcampHandler(MusicScrapingHandler):
         return self.new_wait().until(EC.presence_of_element_located(locator)).text
 
     def music_scrape_album(self):
-        locator = (By.XPATH, '//*[@id="name-section"]/h3/span[1]/a/span[@class="fromAlbum" and @itemprop="name"]')
+        locator = (By.XPATH, '//*[@id="name-section"]/h3/span[1]/a/span[@class="fromAlbum"]')
         try:
             return self.new_wait(timeout=2).until(EC.presence_of_element_located(locator)).text
         except TimeoutError:
