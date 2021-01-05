@@ -29,7 +29,7 @@ from taciturn.applications.base import ApplicationHandlerException
 from taciturn.applications.follower import FollowerApplicationHandler
 
 
-INSTAGRAM_ACTION_RETRIES = 20
+INSTAGRAM_ACTION_RETRIES = 30
 
 
 class InstagramHandler(FollowerApplicationHandler):
@@ -94,7 +94,8 @@ class InstagramHandler(FollowerApplicationHandler):
                                     .click()
 
         # sometimes login can be slow, so this ensures we wait until login is completed:
-        self.new_wait().until(EC.staleness_of(login_form_element))
+        login_logo_locator = (By.XPATH, '//section/main/article//h1[text()="Instagram"]')
+        self.new_wait().until(EC.invisibility_of_element(login_logo_locator))
 
         # sometimes prompted with extra security, check if bypass necessary:
 

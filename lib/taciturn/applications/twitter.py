@@ -339,7 +339,12 @@ class TwitterHandler(FollowerApplicationHandler):
             try:
                 flist_next_element = self.new_wait(flist_entry)\
                     .until(EC.presence_of_element_located(flist_next_locator))
-                self.flist_button(flist_next_element)   # scan username
+                # sometimes an empty div may be in the list, skip it and continue:
+                if self.flist_is_empty(flist_next_element):
+                    self.log.warning("Entry empty, scanning again!")
+                    flist_next_element = self.new_wait(flist_next_element) \
+                        .until(EC.presence_of_element_located(flist_next_locator))
+                self.flist_button(flist_next_element)   # scan button to verify
                 return flist_next_element
             except TimeoutException:
                 self.log.warning(f"Couldn't scan flist next (try {try_n} of {retries})")
@@ -354,15 +359,17 @@ class TwitterHandler(FollowerApplicationHandler):
         # need to thoroughly check for absence of a proper entry, here we check by username ...
         username_locator = self._flist_username_locator()
         try:
-            self.new_wait(flist_entry, timeout=20)\
-                .until(EC.presence_of_element_located(username_locator))
+            flist_entry.find_element(*username_locator)
+            # self.new_wait(flist_entry, timeout=20)\
+            #    .until(EC.presence_of_element_located(username_locator))
             return False
-        except TimeoutException:
+        except NoSuchElementException:
             pass
-        # then, try to check for an empty node, will raise TimeoutException if not found:
-        empty_locator = (By.XPATH, './div/div[not(node())]')
-        self.new_wait(flist_entry, timeout=30)\
-                .until(EC.presence_of_element_located(empty_locator))
+        # then, try to check for an empty node, will raise NoSuchElement if not found:
+        empty_locator = (By.XPATH, './div/div[not(node())] | ./div[not(node())]')
+        flist_entry.find_element(*empty_locator)
+        # self.new_wait(flist_entry, timeout=30)\
+        #        .until(EC.presence_of_element_located(empty_locator))
         return True
 
     def flist_username(self, flist_entry):

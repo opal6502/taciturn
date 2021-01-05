@@ -110,7 +110,7 @@ class FacebookHandler(LoginApplicationHandler):
         return overhang_y_corrected
 
     def _page_post_get_first(self):
-        locator = (By.XPATH, '//div[@aria-posinset="1"]')
+        locator = (By.XPATH, '(//div[@aria-label="Page Admin Content"]//div[@role="main"]/div/div[1])[4]')
         return self.new_wait().until(EC.presence_of_element_located(locator))
 
     def _page_element_rescroll(self, page_element):
@@ -186,7 +186,7 @@ class FacebookHandler(LoginApplicationHandler):
         return self.new_wait(timeout=90).until(EC.element_to_be_clickable(locator))
 
     def _page_post_submit_button(self):
-        locator = (By.XPATH, '//*[starts-with(@id,"mount")]//div[text()="Post"]')
+        locator = (By.XPATH, '//*[starts-with(@id,"mount")]//span[text()="Post"]')
         return self.new_wait().until(EC.element_to_be_clickable(locator))
 
     def _page_post_submit_new(self, post_body, post_link=None, retries=FACEBOOK_ACTION_RETRIES):
