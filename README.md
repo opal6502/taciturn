@@ -2,11 +2,11 @@
 
 Taciturn is a Python/Selenium tool and framework for automating social media tasks.
 
-For current development notes, please see my [Evernote Document](https://www.evernote.com/l/AtC6SBcYqJ9Iu6mm9uSS8M5NUJIUPXLQZ7U) on this.  The current development version is ```v0.3a```!  It has some very useful features but has only been used on my personal development system!
+For current development notes, please see my [Evernote Document](https://www.evernote.com/l/AtC6SBcYqJ9Iu6mm9uSS8M5NUJIUPXLQZ7U) on this.  The current development version is ```v0.4a```!  It has some very useful features but has only been used on my personal development system!
 
 This documentation is pretty minimal, but I can make it better upon request!  This is a good, free tool to help kick-start a the social media presence of a project your believe in!
 
-Also, while this is an extremely useful tool, it does require some programming and system knowledge in order to fully configure and run it!  Comparable tools could literally cost you $5-7 per month, but I'm writing a tool to do this as a programming exercise, please tell your friends or donate if you found Taciturn useful.
+Also, while this is an extremely useful tool, it does require some programming and system knowledge in order to fully configure and run it!  Comparable tools could literally cost you $5-10+ per month (per service!), but I'm writing a tool to do this as a programming exercise, please tell your friends or donate if you found Taciturn useful.
 
 ## Features
 
