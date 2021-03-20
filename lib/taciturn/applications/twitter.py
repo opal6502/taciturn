@@ -230,12 +230,13 @@ class TwitterHandler(FollowerApplicationHandler):
 
         submit_tweet_button_locator = (By.XPATH, '//div[@role="button"]//span[text()="Tweet"]/../../../div')
         submit_tweet_button_element = post_wait.until(EC.presence_of_element_located(submit_tweet_button_locator))
+
+        tweet_lightbox_xbutton_locator = (By.XPATH, '//div[@aria-label="Close" and @role="button"]/div[@dir="auto"]')
+        tweet_lightbox_xbutton_element = post_wait.until(EC.presence_of_element_located(tweet_lightbox_xbutton_locator))
+
         self.element_scroll_to(submit_tweet_button_element)
         submit_tweet_button_element.click()
 
-        # wait for the lightbox (x) to dissapear, to verify tweet sent ...
-        tweet_lightbox_xbutton_locator = (By.XPATH, '//div[@aria-label="Close" and @role="button"]/div[@dir="auto"]')
-        tweet_lightbox_xbutton_element = post_wait.until(EC.presence_of_element_located(tweet_lightbox_xbutton_locator))
         post_wait.until(EC.staleness_of(tweet_lightbox_xbutton_element))
         self.log.info("Tweet submitted.")
 

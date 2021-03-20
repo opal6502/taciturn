@@ -29,6 +29,7 @@ from taciturn.db.base import (
 )
 
 import taciturn.db.followers
+import taciturn.db.listq
 
 
 print('> Taciturn database init script!')
@@ -39,14 +40,14 @@ print('done.')
 
 print('> Database URL:', conf['database_url'])
 
-print('> Connecting to database ... ', end='')
+print('> Connecting to database ...', end='')
 engine = conf['database_engine']
 session = Session(bind=engine)
-print('done.')
+print(' done.')
 
 print('> Loading tables ...', end='')
 ORMBase.metadata.create_all(engine)
-print('done.')
+print(' done.')
 
 print('> Initializing rows for supported applications ...')
 
@@ -63,10 +64,11 @@ print('> Setting up job ids ...', end='')
 
 job_id_rows = session.query(JobId).count()
 if job_id_rows == 1:
-    print('Already done.')
+    print(' already done.')
 elif job_id_rows == 0:
-    new_jobid_row = JobId(id=1, job_id=1)
+    new_jobid_row = JobId(id=1, job_id=0)
     session.add(new_jobid_row)
+    print(' done.')
 else:
     print('Warning: multiple rows found in job id, should only be one!')
 

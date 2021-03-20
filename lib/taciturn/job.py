@@ -97,6 +97,9 @@ class TaciturnJob(ABC):
         except KeyError:
             raise TaciturnJobNoAccountException("Error: no account for app '{}' loaded.".format(app_name))
 
+    def get_taciturn_user(self, user_name):
+        return self.session.query(TaciturnUser).filter(TaciturnUser.name == user_name).one()
+
     @abstractmethod
     def run(self):
         pass

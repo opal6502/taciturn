@@ -32,6 +32,11 @@ if 'TACITURN_ROOT' not in os.environ:
 
 taciturn_root = os.environ['TACITURN_ROOT']
 
+if 'TACITURN_DATABASE_URL' not in os.environ:
+    raise RuntimeError("Environment variable TACITURN_DATABASE_URL must be defined.")
+
+database_url = os.environ['TACITURN_DATABASE_URL']
+
 
 default_config = {
     'taciturn_root': taciturn_root,
@@ -47,11 +52,7 @@ default_config = {
     'log_level': logging.DEBUG,
     'log_format': '%(asctime)s - {job_name} - %(levelname)s - %(message)s',
 
-    # 'database_url': 'sqlite:///' + os.path.join(taciturn_root, 'db', 'taciturn.sqlite'),
-    'database_url': 'postgresql+psycopg2://taciturn:T4C1TVR^^^N@localhost/taciturn',
-    #'orm_connect_args': {'timeout': 60},
-
-    'asset_root': os.path.join(taciturn_root, 'assets'),
+    'database_url': database_url,
 
     'day_length': datetime.timedelta(hours=3),
     'timezone': pytz.timezone('America/Los_Angeles'),
@@ -103,6 +104,10 @@ default_config = {
         'daily_max_unfollows': 85,
         'round_max_unfollows': 85,
     },
+    'app:facebook': {
+        # 1-2 minutes:
+        'action_timeout': (1000*60, 1000*60*2),
+    }
 }
 
 supported_applications = (

@@ -65,7 +65,9 @@ class AppAccount(ORMBase):
     application_id = Column(Integer, ForeignKey('application.id'))
     application = relationship('Application', backref='app_accounts')
     taciturn_user_id = Column(Integer, ForeignKey('taciturn_user.id'))
-    taciturn_user = relationship('TaciturnUser', backref='app_accounts')
+    taciturn_user = relationship('TaciturnUser', backref='app_accounts',
+                                                 single_parent=True,
+                                                 cascade="all, delete-orphan")
 
     established = Column(DateTime, nullable=False)
 
@@ -81,7 +83,9 @@ class Whitelist(ORMBase):
     application_id = Column(Integer, ForeignKey('application.id'))
     application = relationship('Application', backref='whitelist_for_taciturn_user')
     taciturn_user_id = Column(Integer, ForeignKey('taciturn_user.id'))
-    taciturn_user = relationship('TaciturnUser', backref='whitelist')
+    taciturn_user = relationship('TaciturnUser', backref='whitelist',
+                                                 single_parent=True,
+                                                 cascade="all, delete-orphan")
 
     established = Column(DateTime, nullable=False)
     name = Column(String(100), nullable=False)
@@ -95,7 +99,9 @@ class Blacklist(ORMBase):
     application_id = Column(Integer, ForeignKey('application.id'))
     application = relationship('Application', backref='blacklist_for_taciturn_user')
     taciturn_user_id = Column(Integer, ForeignKey('taciturn_user.id'))
-    taciturn_user = relationship('TaciturnUser', backref='blacklist')
+    taciturn_user = relationship('TaciturnUser', backref='blacklist',
+                                                 single_parent=True,
+                                                 cascade="all, delete-orphan")
 
     established = Column(DateTime, nullable=False)
     name = Column(String(100), nullable=False)

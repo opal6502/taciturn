@@ -33,6 +33,7 @@ from selenium.webdriver import Chrome, Firefox, Remote
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, StaleElementReferenceException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.keys import Keys
 
 import PIL
 from PIL import Image, ImageChops
@@ -347,6 +348,9 @@ class BaseApplicationHandler(ABC):
             pass
         finally:
             self.driver.switch_to.default_content()
+
+    def open_tab_chord(self):
+        return Keys.COMMAND + 't' + Keys.ENTER
 
 
 # app state exceptions:
