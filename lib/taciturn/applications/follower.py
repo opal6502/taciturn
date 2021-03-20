@@ -262,7 +262,7 @@ class FollowerApplicationHandler(LoginApplicationHandler):
             try:
                 # self.log.debug("_button_text_in_following: getting button text ...")
                 text = self.flist_button_text(flist_entry)
-                self.log.debug(f"_button_text_in_following: button text = '{text}'")
+                # self.log.debug(f"_button_text_in_following: button text = '{text}'")
                 result = text in self.button_text_following
                 # self.log.debug("_button_text_in_following: text = '{}'".format(text))
                 # self.log.debug("_button_text_in_following: result = {}".format(result))

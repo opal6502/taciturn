@@ -43,6 +43,8 @@ class TwitterHandler(FollowerApplicationHandler):
     button_text_following = ('Following', 'Pending', 'Cancel', 'Unfollow')
     button_text_not_following = ('Follow', 'Unblock', 'Blocked')
 
+    flist_load_timeout = 10
+
     def __init__(self, app_account, handler_stats=None, driver=None):
         super().__init__(app_account, handler_stats, driver)
         self.log.info("Starting Twitter app handler.")
@@ -314,7 +316,7 @@ class TwitterHandler(FollowerApplicationHandler):
         return True
 
     def unfollow_confirm_button(self):
-        locator = (By.XPATH, '//*[@id="react-root"]//span/span[text() = "Unfollow"]')
+        locator = (By.XPATH, '//*[@id="react-root"]//span/span[text()="Unfollow" or text()="Discard"]')
         return self.new_wait(timeout=10).until(EC.presence_of_element_located(locator))
 
     # XXX NEW 0.2a flist METHODS!
@@ -333,6 +335,7 @@ class TwitterHandler(FollowerApplicationHandler):
         return self.new_wait().until(EC.presence_of_element_located(locator))
 
     def flist_next(self, flist_entry, retries=10):
+        # sleep(0.5)
         super().flist_next(None)
         flist_next_locator = (By.XPATH, './following-sibling::div[1]')
         for try_n in range(1, retries+1):
@@ -344,7 +347,7 @@ class TwitterHandler(FollowerApplicationHandler):
                     self.log.warning("Entry empty, scanning again!")
                     flist_next_element = self.new_wait(flist_next_element) \
                         .until(EC.presence_of_element_located(flist_next_locator))
-                self.flist_button(flist_next_element)   # scan button to verify
+                self.flist_username(flist_next_element)   # scan username to verify
                 return flist_next_element
             except TimeoutException:
                 self.log.warning(f"Couldn't scan flist next (try {try_n} of {retries})")
@@ -365,9 +368,12 @@ class TwitterHandler(FollowerApplicationHandler):
             return False
         except NoSuchElementException:
             pass
-        # then, try to check for an empty node, will raise NoSuchElement if not found:
-        empty_locator = (By.XPATH, './div/div[not(node())] | ./div[not(node())]')
-        flist_entry.find_element(*empty_locator)
+        # then, try to check for an empty node:
+        try:
+            empty_locator = (By.XPATH, './div/div[not(node())] | ./div[not(node())]')
+            flist_entry.find_element(*empty_locator)
+        except NoSuchElementException:
+            return False
         # self.new_wait(flist_entry, timeout=30)\
         #        .until(EC.presence_of_element_located(empty_locator))
         return True

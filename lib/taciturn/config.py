@@ -53,7 +53,7 @@ default_config = {
 
     'asset_root': os.path.join(taciturn_root, 'assets'),
 
-    'day_length': datetime.timedelta(hours=8),
+    'day_length': datetime.timedelta(hours=3),
     'timezone': pytz.timezone('America/Los_Angeles'),
 
     # selenium webdriver type:  'chrome', 'chrome_headless', 'firefox', 'firefox_headless'
@@ -70,10 +70,10 @@ default_config = {
         'daily_max_unfollows': 400,
         'round_max_unfollows': 100,
 
-        # 5 seconds to 2 minutes:
-        'action_timeout': (1000*5, 1000*60*2),
+        # 5 seconds to 30 seconds:
+        'action_timeout': (1000*5, 1000*30),
 
-        'follow_back_hiatus': datetime.timedelta(days=7),
+        'follow_back_hiatus': datetime.timedelta(days=10),
         'unfollow_hiatus': datetime.timedelta(days=30*3),
         'mutual_expire_hiatus': datetime.timedelta(days=30*3),
 
