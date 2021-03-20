@@ -65,14 +65,27 @@ class BandcampScrapeArtistTracks(TaciturnJob):
 
         # now, add all tracks to a listq:
         anvilmesa_user = self.get_taciturn_user('anvilmesa')
+        amfan1_user = self.get_taciturn_user('amfan1')
+        amfan2_user = self.get_taciturn_user('amfan2')
+        amfan3_user = self.get_taciturn_user('amfan3')
+
         tracks_listq = ListQueue(anvilmesa_user, 'anvilmesa_bandcamp_discog')
+        amfan1_listq = ListQueue(amfan1_user, 'amfan1_bandcamp_discog')
+        amfan2_listq = ListQueue(amfan2_user, 'amfan2_bandcamp_discog')
+        amfan3_listq = ListQueue(amfan3_user, 'amfan3_bandcamp_discog')
 
         print("Clearing listq contents!")
         tracks_listq.clear()
+        amfan1_listq.clear()
+        amfan2_listq.clear()
+        amfan3_listq.clear()
 
         for track_data in all_tracks:
             print(f"Adding {track_data!r} to listq.")
             tracks_listq.append(track_data.to_listq_entry())
+            amfan1_listq.append(track_data.to_listq_entry())
+            amfan2_listq.append(track_data.to_listq_entry())
+            amfan3_listq.append(track_data.to_listq_entry())
 
         print("Done.")
 

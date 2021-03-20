@@ -37,7 +37,7 @@ class Application(ORMBase):
 
     id = Column(Integer, Sequence('application_id_seq'), primary_key=True)
 
-    established = Column(DateTime, nullable=False)
+    established = Column(DateTime(timezone=True), nullable=False)
     name = Column(String(100), unique=True, nullable=False)
 
 
@@ -50,7 +50,7 @@ class TaciturnUser(ORMBase):
     # application = relationship('Application', backref='users')
 
     # XXX need to create a constraint where every app & user pair must be unique!
-    established = Column(DateTime, nullable=False)
+    established = Column(DateTime(timezone=True), nullable=False)
     name = Column(String(500), unique=True, nullable=False)
 
     # a user will just be a way of grouping app accounts:
@@ -65,11 +65,9 @@ class AppAccount(ORMBase):
     application_id = Column(Integer, ForeignKey('application.id'))
     application = relationship('Application', backref='app_accounts')
     taciturn_user_id = Column(Integer, ForeignKey('taciturn_user.id'))
-    taciturn_user = relationship('TaciturnUser', backref='app_accounts',
-                                                 single_parent=True,
-                                                 cascade="all, delete-orphan")
+    taciturn_user = relationship('TaciturnUser', backref='app_accounts')
 
-    established = Column(DateTime, nullable=False)
+    established = Column(DateTime(timezone=True), nullable=False)
 
     name = Column(String(500), nullable=False)
     password = Column(String(500), nullable=False)
@@ -83,11 +81,9 @@ class Whitelist(ORMBase):
     application_id = Column(Integer, ForeignKey('application.id'))
     application = relationship('Application', backref='whitelist_for_taciturn_user')
     taciturn_user_id = Column(Integer, ForeignKey('taciturn_user.id'))
-    taciturn_user = relationship('TaciturnUser', backref='whitelist',
-                                                 single_parent=True,
-                                                 cascade="all, delete-orphan")
+    taciturn_user = relationship('TaciturnUser', backref='whitelist')
 
-    established = Column(DateTime, nullable=False)
+    established = Column(DateTime(timezone=True), nullable=False)
     name = Column(String(100), nullable=False)
 
 
@@ -99,11 +95,9 @@ class Blacklist(ORMBase):
     application_id = Column(Integer, ForeignKey('application.id'))
     application = relationship('Application', backref='blacklist_for_taciturn_user')
     taciturn_user_id = Column(Integer, ForeignKey('taciturn_user.id'))
-    taciturn_user = relationship('TaciturnUser', backref='blacklist',
-                                                 single_parent=True,
-                                                 cascade="all, delete-orphan")
+    taciturn_user = relationship('TaciturnUser', backref='blacklist')
 
-    established = Column(DateTime, nullable=False)
+    established = Column(DateTime(timezone=True), nullable=False)
     name = Column(String(100), nullable=False)
 
 

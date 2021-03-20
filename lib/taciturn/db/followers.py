@@ -30,11 +30,9 @@ class Follower(ORMBase):
     application = relationship('Application', backref='followers_for_taciturn_user')
 
     taciturn_user_id = Column(Integer, ForeignKey('taciturn_user.id'))
-    taciturn_user = relationship('TaciturnUser', backref='followers',
-                                                 single_parent=True,
-                                                 cascade="all, delete-orphan")
+    taciturn_user = relationship('TaciturnUser', backref='followers')
 
-    established = Column(DateTime, nullable=False)
+    established = Column(DateTime(timezone=True), nullable=False)
     name = Column(String(100), nullable=False)
 
 
@@ -46,11 +44,9 @@ class Following(ORMBase):
     application_id = Column(Integer, ForeignKey('application.id'))
     application = relationship('Application', backref='following_for_taciturn_user')
     taciturn_user_id = Column(Integer, ForeignKey('taciturn_user.id'))
-    taciturn_user = relationship('TaciturnUser', backref='following',
-                                                 single_parent=True,
-                                                 cascade="all, delete-orphan")
+    taciturn_user = relationship('TaciturnUser', backref='following')
 
-    established = Column(DateTime, nullable=False)
+    established = Column(DateTime(timezone=True), nullable=False)
     name = Column(String(100), nullable=False)
 
 
@@ -62,9 +58,7 @@ class Unfollowed(ORMBase):
     application_id = Column(Integer, ForeignKey('application.id'))
     application = relationship('Application', backref='unfollowed_for_taciturn_user')
     taciturn_user_id = Column(Integer, ForeignKey('taciturn_user.id'))
-    taciturn_user = relationship('TaciturnUser', backref='unfollowed',
-                                                 single_parent=True,
-                                                 cascade="all, delete-orphan")
+    taciturn_user = relationship('TaciturnUser', backref='unfollowed')
 
-    established = Column(DateTime, nullable=False)
+    established = Column(DateTime(timezone=True), nullable=False)
     name = Column(String(100), nullable=False)

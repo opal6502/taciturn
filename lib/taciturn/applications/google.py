@@ -84,6 +84,7 @@ class GoogleLoginMixin(BaseApplicationHandler):
             .send_keys(self.app_account.name)
         login_wait.until(EC.element_to_be_clickable(google_id_next_button_locator))\
             .click()
+
         login_wait.until(EC.element_to_be_clickable(google_password_field_locator))\
             .send_keys(self.app_account.password)
         # this part is troublesome:

@@ -164,7 +164,7 @@ class SoundcloudHandler(FollowerApplicationHandler, GoogleLoginMixin):
 
     def flist_next(self, flist_entry):
         super().flist_next(None)
-        sleep(0.1)
+        sleep(0.05)
         locator = (By.XPATH, './following-sibling::li[1]')
         return self.new_wait(flist_entry).until(EC.presence_of_element_located(locator))
         

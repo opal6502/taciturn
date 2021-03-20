@@ -341,7 +341,7 @@ class YoutubeHandler(LoginApplicationHandler, GoogleLoginMixin):
         header_element = self.new_wait().until(EC.presence_of_element_located(locator))
         return header_element.size['height']
 
-    def start_search_like_and_comment(self, search_string, quota=200, comments_list=None):
+    def start_search_like_and_comment(self, search_string, quota=100, comments_list=None):
         self._search_submit(search_string)
 
         open_tab_chord = self.open_tab_chord()
