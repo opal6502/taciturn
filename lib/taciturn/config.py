@@ -54,7 +54,8 @@ default_config = {
 
     'database_url': database_url,
 
-    'day_length': datetime.timedelta(hours=3),
+
+    'day_length': datetime.timedelta(hours=2),
     'timezone': pytz.timezone('America/Los_Angeles'),
 
     # selenium webdriver type:  'chrome', 'chrome_headless', 'firefox', 'firefox_headless'

@@ -291,7 +291,9 @@ class FacebookHandler(LoginApplicationHandler):
         for try_n in range(1, retries+1):
             try:
                 new_post_button_locator = (By.XPATH, '//div[@role="button"]'
-                                                     '//span[starts-with(text(), "What\'s on your mind")]')
+                                                     '//span[starts-with(text(), "What\'s on your mind")]'
+                                                     ' | //div[@role="button"]'
+                                                     '//span[starts-with(text(), "Create a public post")]')
                 new_post_button_element = post_wait.until(EC.element_to_be_clickable(new_post_button_locator))
                 self.element_scroll_to(new_post_button_element, y_offset=300)
                 new_post_button_element.click()

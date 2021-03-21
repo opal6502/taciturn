@@ -19,7 +19,7 @@
 
 import sys
 
-from taciturn.job import TaciturnJob
+from taciturn.job import TaciturnJob, TaskExecutor
 
 from taciturn.applications.music import TrackData, Genres
 from taciturn.applications.bandcamp import BandcampHandler
@@ -40,7 +40,7 @@ class AnvilMesaDailyTrackPost(TaciturnJob):
         if self.options.user is None:
             self.log.critical("You must provide a user with the '-u user' option")
 
-        is_correct_user = self.options.user is not None and self.options.user[0] == 'anvilmesa'
+        is_correct_user = self.options.user is not None and self.options.user[0].startswith('anvilmesa')
 
         if not is_correct_user:
             self.log.critical("This job is for the user 'anvilmesa' only.")
@@ -84,7 +84,14 @@ class AnvilMesaDailyTrackPost(TaciturnJob):
         twitter_account = self.get_account('twitter')
         twitter_handler = TwitterHandler(twitter_account)
         twitter_handler.login()
-        twitter_handler.post_tweet(twitter_post_body)
+
+        TaskExecutor(call=lambda: twitter_handler.post_tweet(twitter_post_body),
+                     job_name=self.job_name(),
+                     driver=twitter_handler.driver,
+                     retries=60,
+                     take_screenshots=False
+                     ).run()
+
         twitter_handler.quit()
 
         self.log.info("Job: made tweet.")

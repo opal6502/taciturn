@@ -38,7 +38,7 @@ class AnvilMesaDailyTrackPost(TaciturnJob):
         if self.options.user is None:
             self.log.critical("You must provide a user with the '-u user' option")
 
-        self.username = self.options.user
+        self.username = self.options.user[0]
 
         is_correct_user = self.options.user is not None and self.options.user[0].startswith('amfan')
 
@@ -76,7 +76,8 @@ class AnvilMesaDailyTrackPost(TaciturnJob):
         TaskExecutor(call=lambda: twitter_handler.post_tweet(twitter_post_body, notruncate=True),
                      job_name=self.job_name(),
                      driver=twitter_handler.driver,
-                     retries=10
+                     retries=60,
+                     take_screenshots=False
                      ).run()
 
         twitter_handler.quit()

@@ -29,20 +29,31 @@ class BandcampHandler(MusicScrapingHandler):
     application_name = 'bandcamp'
     application_url = "https://bandcamp.com"
 
-    def music_scrape_artist(self):
-        locator = (By.XPATH, '//div[@id="name-section"]/h3/span[2]/a')
+    _album_locator = (By.XPATH, '//*[@id="name-section"]/h3/span[1]/a/span')
+
+    def track_scrape_artist(self):
+        if self.track_has_album_field():
+            locator = (By.XPATH, '//*[@id="name-section"]/h3/span[2]/a')
+        else:
+            locator = (By.XPATH, '//*[@id="name-section"]/h3/span/a')
         return self.new_wait().until(EC.presence_of_element_located(locator)).text
 
     def track_scrape_title(self):
         locator = (By.XPATH, '//*[@id="name-section"]/h2[@class="trackTitle"]')
         return self.new_wait().until(EC.presence_of_element_located(locator)).text
 
-    def music_scrape_album(self):
-        locator = (By.XPATH, '//*[@id="name-section"]/h3/span[1]/a/span[@class="fromAlbum"]')
+    def track_scrape_album(self):
         try:
-            return self.new_wait(timeout=2).until(EC.presence_of_element_located(locator)).text
+            return self.new_wait(timeout=2).until(EC.presence_of_element_located(self._album_locator)).text
         except TimeoutException:
             return None
+
+    def track_has_album_field(self):
+        try:
+            self.driver.find_element(*self._album_locator)
+        except NoSuchElementException:
+            return False
+        return True
 
     def track_scrape_art_url(self):
         small_image_locator = (By.XPATH, '//*[@id="tralbumArt"]/a/img')

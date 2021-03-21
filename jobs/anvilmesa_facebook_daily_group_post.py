@@ -38,7 +38,7 @@ class AnvilMesaDailyTrackPost(TaciturnJob):
         if self.options.user is None:
             self.log.critical("You must provide a user with the '-u user' option")
 
-        is_correct_user = self.options.user is not None and self.options.user[0] == 'anvilmesa'
+        is_correct_user = self.options.user is not None and self.options.user[0].startswith('anvilmesa')
 
         if not is_correct_user:
             self.log.critical("This job is for the user 'anvilmesa' only.")

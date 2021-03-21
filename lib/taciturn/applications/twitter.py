@@ -45,6 +45,8 @@ class TwitterHandler(FollowerApplicationHandler):
 
     flist_load_timeout = 10
 
+    flist_load_timeout = 10
+
     def __init__(self, app_account, handler_stats=None, driver=None):
         super().__init__(app_account, handler_stats, driver)
         self.log.info("Starting Twitter app handler.")
@@ -203,8 +205,10 @@ class TwitterHandler(FollowerApplicationHandler):
             else:
                 break
 
-    def post_tweet(self, tweet_body, tweet_image=None):
+    def post_tweet(self, tweet_body, tweet_image=None, notruncate=False):
         self.log.info("Posting new tweet.")
+
+        self.driver.get(self.application_url)
 
         post_wait = self.new_wait(timeout=90)
         compose_tweet_button = (By.XPATH, '//a[@href="/compose/tweet" and @role="button"]')
@@ -213,9 +217,12 @@ class TwitterHandler(FollowerApplicationHandler):
 
         tweet_text_input_locator = (By.XPATH, '//div[@aria-label="Tweet text"]')
         tweet_text_input_element = post_wait.until(EC.presence_of_element_located(tweet_text_input_locator))
-        truncated_tweet_body = self.truncate_tweet(tweet_body)
-        tweet_text_input_element.send_keys(truncated_tweet_body)
-        tweet_text_input_element.send_keys(Keys.ESCAPE)
+        if notruncate is False:
+            truncated_tweet_body = self.truncate_tweet(tweet_body)
+            tweet_text_input_element.send_keys(truncated_tweet_body)
+            tweet_text_input_element.send_keys(Keys.ESCAPE)
+        else:
+            tweet_text_input_element.send_keys(tweet_body)
 
         if tweet_image is not None:
             tweet_image_input_locator = (By.XPATH, '//div[@aria-label="Add photos or video"]'
@@ -237,7 +244,9 @@ class TwitterHandler(FollowerApplicationHandler):
         self.element_scroll_to(submit_tweet_button_element)
         submit_tweet_button_element.click()
 
-        post_wait.until(EC.staleness_of(tweet_lightbox_xbutton_element))
+        submitted_wait = self.new_wait(timeout=15)
+        submitted_wait.until(EC.staleness_of(tweet_lightbox_xbutton_element))
+
         self.log.info("Tweet submitted.")
 
     def truncate_tweet(self, tweet_text):

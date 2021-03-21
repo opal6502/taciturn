@@ -137,7 +137,7 @@ class TaciturnJobLoader:
 
 
 class TaskExecutor:
-    def __init__(self, driver=None, job_name=None, call=None, retries=None, handler_stats=None):
+    def __init__(self, driver=None, job_name=None, call=None, retries=None, handler_stats=None, take_screenshots=True):
         self.driver = driver
         self.job_name = job_name
         self.call = call
@@ -151,6 +151,7 @@ class TaskExecutor:
         self.task_start_time = 0
         self.retry = 0
         self.screenshot_n = 0
+        self.take_screenshots = take_screenshots
 
         # handler SIGTERM, which Jenkins will send to stop a process:
         signal.signal(signal.SIGTERM, self._signal_handler_report_exit)
@@ -186,12 +187,14 @@ class TaskExecutor:
                 break
             except ApplicationHandlerUserPrivilegeSuspendedException:
                 self.log.warning("Task: incomplete: user privileges revoked by application.")
-                self.take_screenshot()
+                if self.take_screenshots:
+                    self.take_screenshot()
                 self.log_report(incomplete=True)
                 return
             except Exception as e:
                 self.log.exception(f"Task: failed: try {try_n} of {self.retries}; exception occurred.")
-                self.take_screenshot()
+                if self.take_screenshots:
+                    self.take_screenshot()
                 if try_n >= self.retries:
                     self.log_report(incomplete=True)
                     raise e
@@ -201,14 +204,15 @@ class TaskExecutor:
             self.log.error(f"Task: Failed after {try_n} tries.")
 
         self.total_time += time() - self.task_start_time
-        self.operations_total += self.handler_stats.get_operation_count()
+        if self.handler_stats is not None:
+            self.operations_total += self.handler_stats.get_operation_count()
 
         self.log_report()
 
     def log_report(self, incomplete=False):
         if incomplete is True:
             self.log.info(f"Task: incomplete: "
-                          f"operations = {self.handler_stats.get_operation_count()}; "
+                          f"operations = {self.handler_stats.get_operation_count() if self.handler_stats is not None else 'n/a'}; "
                           f"failures = {self.retry-1}; "
                           f"start_time = '{datetime_fromtimestamp_tz(self.task_start_time)}'; "
                           f"end_time = '{datetime_now_tz()}'; "
@@ -216,7 +220,7 @@ class TaskExecutor:
             self.log.info("Task: stopped prematurely.")
         else:
             self.log.info(f"Task: complete: "
-                          f"operations = {self.handler_stats.get_operation_count()}; "
+                          f"operations = {self.handler_stats.get_operation_count() if self.handler_stats is not None else 'n/a'}; "
                           f"failures = {self.retry-1}; "
                           f"start_time = '{datetime_fromtimestamp_tz(self.task_start_time)}'; "
                           f"end_time = '{datetime_now_tz()}'; "
@@ -287,13 +291,15 @@ class RoundTaskExecutor(TaskExecutor):
                     break
                 except ApplicationHandlerUserPrivilegeSuspendedException:
                     self.log.warning("Task: incomplete: user privileges revoked by application.")
-                    self.take_screenshot()
+                    if self.take_screenshots:
+                        self.take_screenshot()
                     self.log_report(incomplete=True)
                     return
                 except Exception as e:
                     self.log.exception(f"Task: round {round_n} of {self.total_rounds} failed, "
                                        f"try {try_n} of {self.retries}; exception occurred.")
-                    self.take_screenshot()
+                    if self.take_screenshots:
+                        self.take_screenshot()
                     self.round_retries += 1
                     if try_n >= self.retries:
                         self.log_report(incomplete=True)

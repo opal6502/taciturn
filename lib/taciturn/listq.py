@@ -177,8 +177,8 @@ class ListQueue:
 
         oldest_portion_subquery = self._session.query(ListQueueEntry.id) \
             .filter(ListQueueEntry.listq_id == self._id)\
-            .limit(fraction_limit).from_self()\
-            .order_by(nullsfirst(ListQueueEntry.last_read))\
+            .order_by(nullsfirst(ListQueueEntry.last_read)) \
+            .limit(fraction_limit).from_self() \
             .subquery()
 
         listq_query = self._session.query(ListQueueEntry)\
