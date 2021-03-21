@@ -29,7 +29,7 @@ from taciturn.applications.base import ApplicationHandlerException
 from taciturn.applications.follower import FollowerApplicationHandler
 
 
-INSTAGRAM_ACTION_RETRIES = 20
+INSTAGRAM_ACTION_RETRIES = 30
 
 
 class InstagramHandler(FollowerApplicationHandler):
@@ -94,7 +94,8 @@ class InstagramHandler(FollowerApplicationHandler):
                                     .click()
 
         # sometimes login can be slow, so this ensures we wait until login is completed:
-        self.new_wait().until(EC.staleness_of(login_form_element))
+        login_logo_locator = (By.XPATH, '//section/main/article//h1[text()="Instagram"]')
+        self.new_wait().until(EC.invisibility_of_element(login_logo_locator))
 
         # sometimes prompted with extra security, check if bypass necessary:
 
@@ -332,7 +333,8 @@ class InstagramHandler(FollowerApplicationHandler):
         # 1.  /html/body/div[1]/form/input
         # 2.  /html/body/div[1]/section/main/div[1]/form/input    - I think this is for the profile image
         # 3.  /html/body/div[1]/section/nav[1]/div/div/form/input
-        locator = (By.XPATH, '/html/body/div[1]/section/main/div[1]/form/input')
+        #locator = (By.XPATH, '//input[not(contains(@accept,"png"))][last()]')
+        locator = (By.XPATH, '/html/body/div[1]/section/nav[1]/div/div/form/input')
         return self.new_wait().until(EC.presence_of_element_located(locator))
 
     def post_image(self, image_filename, post_body, retries=INSTAGRAM_ACTION_RETRIES):

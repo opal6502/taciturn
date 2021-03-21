@@ -279,6 +279,7 @@ class FollowerApplicationHandler(LoginApplicationHandler):
             try:
                 # self.log.debug("_button_text_in_following: getting button text ...")
                 text = self.flist_button_text(flist_entry)
+                # self.log.debug(f"_button_text_in_following: button text = '{text}'")
                 result = text in self.button_text_following
                 # self.log.debug("_button_text_in_following: text = '{}'".format(text))
                 # self.log.debug("_button_text_in_following: result = {}".format(result))
@@ -362,7 +363,16 @@ class FollowerApplicationHandler(LoginApplicationHandler):
                 flist_entry = self.flist_next(flist_entry)
                 continue
 
-            if self.flist_image_is_default(flist_entry):
+            try:
+                is_default_image = self.flist_image_is_default(flist_entry)
+            except TimeoutException:
+                self.log.warning(f"User '{flist_username}' profile image won't load, skipping.")
+                if self.flist_is_last(flist_entry):
+                    raise ApplicationHandlerEndOfListException("List end encountered, stopping.")
+                flist_entry = self.flist_next(flist_entry)
+                continue
+
+            if is_default_image:
                 self.log.info(f"User '{flist_username}' has no image, skip.")
                 if self.flist_is_last(flist_entry):
                     raise ApplicationHandlerEndOfListException("List end encountered, stopping.")

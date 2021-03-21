@@ -110,7 +110,6 @@ class FacebookHandler(LoginApplicationHandler):
         return overhang_y_corrected
 
     def _page_post_get_first(self):
-        # locator = (By.XPATH, '//div[@aria-posinset="1"]')
         locator = (By.XPATH, '(//div[@aria-label="Page Admin Content"]//div[@role="main"]/div/div[1])[4]')
         return self.new_wait().until(EC.presence_of_element_located(locator))
 
@@ -141,7 +140,7 @@ class FacebookHandler(LoginApplicationHandler):
 
                 return urllib.parse.urlparse(post_link_href).path
             except TimeoutException:
-                pass
+                self.log.warning(f"Couldn't get page post link (try {try_n} of {retries})")
 
         raise ApplicationHandlerException(f"Unable to scrape page post link after {retries} tries.")
 
@@ -176,7 +175,7 @@ class FacebookHandler(LoginApplicationHandler):
         # new v0.1a xpath: '//h2[text()="Create Post"]/../../..//div[@role="textbox" and @contenteditable="true"]'
         locator = (By.XPATH, '//span[text()="Create Post"]/../../../../../..'
                              '//div[@role="textbox" and @contenteditable="true"]')
-        return self.new_wait().until(EC.element_to_be_clickable(locator))
+        return self.new_wait().until(EC.presence_of_element_located(locator))
 
     def _page_post_wait_link_loading_invisible(self):
         # if the preview loading indicator is visible, give it some time:
@@ -237,6 +236,16 @@ class FacebookHandler(LoginApplicationHandler):
                 self.log.debug("Submit new Facebook page post: submitting new post.")
                 self._page_post_submit_button().click()
                 sleep(10)
+
+                # check for add chat option, and bypass it:
+                try:
+                    self.log.debug("Checking for customer chat option.")
+                    customer_chat_locator = (By.XPATH, '//div[@aria-label="Chat Directly With Customers"]'
+                                                       '//div[@role="button"]/i')
+                    self.new_wait(timeout=5).until(EC.element_to_be_clickable(customer_chat_locator))\
+                        .click()
+                except TimeoutException:
+                    self.log.debug("No customer chat option detected!")
 
                 return
             except (TimeoutException, ElementClickInterceptedException):

@@ -54,6 +54,7 @@ default_config = {
 
     'database_url': database_url,
 
+
     'day_length': datetime.timedelta(hours=2),
     'timezone': pytz.timezone('America/Los_Angeles'),
 
@@ -83,10 +84,10 @@ default_config = {
     },
     'app:instagram': {
         # instagram supposedly has a max 500 daily actions!
-        'daily_max_follows': 500,
-        'round_max_follows': 125,
-        'daily_max_unfollows': 500,
-        'round_max_unfollows': 125,
+        'daily_max_follows': 200,
+        'round_max_follows': 100,
+        'daily_max_unfollows': 200,
+        'round_max_unfollows': 100,
     },
     'app:youtube': {
         'video_watch_timeout': (2*60, 5*60),
@@ -99,10 +100,10 @@ default_config = {
         'round_max_unfollows': 200,
     },
     'app:soundcloud': {
-        'daily_max_follows': 50,
-        'round_max_follows': 50,
-        'daily_max_unfollows': 50,
-        'round_max_unfollows': 50,
+        'daily_max_follows': 80,
+        'round_max_follows': 80,
+        'daily_max_unfollows': 85,
+        'round_max_unfollows': 85,
     },
     'app:facebook': {
         # 1-2 minutes:

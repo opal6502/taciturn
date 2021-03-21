@@ -183,6 +183,7 @@ class TaskExecutor:
                 sys.exit(1)
             except ApplicationHandlerEndOfListException:
                 self.log.info("Task: end of list encountered.")
+                self.take_screenshot()
                 break
             except ApplicationHandlerUserPrivilegeSuspendedException:
                 self.log.warning("Task: incomplete: user privileges revoked by application.")
@@ -286,6 +287,7 @@ class RoundTaskExecutor(TaskExecutor):
                     sys.exit(1)
                 except ApplicationHandlerEndOfListException:
                     self.log.info("Task: end of list encountered.")
+                    self.take_screenshot()
                     break
                 except ApplicationHandlerUserPrivilegeSuspendedException:
                     self.log.warning("Task: incomplete: user privileges revoked by application.")
