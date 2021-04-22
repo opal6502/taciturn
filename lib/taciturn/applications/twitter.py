@@ -211,7 +211,7 @@ class TwitterHandler(FollowerApplicationHandler):
         self.driver.get(self.application_url)
 
         post_wait = self.new_wait(timeout=90)
-        compose_tweet_button = (By.XPATH, '//a[@href="/compose/tweet" and @role="button"]')
+        compose_tweet_button = (By.XPATH, '//a[@href="/compose/tweet" and @aria-label="Tweet"]')
         post_wait.until(EC.presence_of_element_located(compose_tweet_button))\
             .click()
 

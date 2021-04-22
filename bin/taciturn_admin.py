@@ -590,8 +590,8 @@ def list_whitelist(user_name, app_name, entry_name=None):
 
 
 def whitelist_add_to(user_name, app_name, entry_name):
-    app = _get_user(user_name)
-    user = _get_app(app_name)
+    user = _get_user(user_name)
+    app = _get_app(app_name)
     if not _validate_app_and_user(user_name, user, app_name, app):
         return False
 
