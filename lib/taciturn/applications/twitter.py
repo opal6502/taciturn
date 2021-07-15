@@ -20,6 +20,7 @@ from time import sleep
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.action_chains import ActionChains
 
 from selenium.common.exceptions import (
     TimeoutException,
@@ -457,3 +458,7 @@ class TwitterHandler(FollowerApplicationHandler):
         except (NoSuchElementException, StaleElementReferenceException):
             # self.log.exception("_flist_bottom_notify_popover: Got exception!")
             return None
+
+    def repos_cursor(self):
+        profile_element = self._home_profile_link_element()
+        ActionChains(self.driver).move_to_element(profile_element).perform()

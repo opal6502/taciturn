@@ -133,6 +133,14 @@ class FollowerApplicationHandler(LoginApplicationHandler):
                           application_id=self.app_account.application_id,
                           taciturn_user_id=self.app_account.taciturn_user_id)
 
+    def db_delete_all_unfollowed(self, flist_username):
+        existing_unfollowed_rows = self.db_get_all_unfollowed(flist_username)
+        existing_unfollowed_rows_count = existing_unfollowed_rows.count()
+        if existing_unfollowed_rows_count > 0:
+            self.log.warn(f"Removing {existing_unfollowed_rows_count} existing unfollowed records "
+                          f"for '{flist_username}' from db.")
+            existing_unfollowed_rows.delete()
+
     def db_new_follower(self, flist_username):
         return Follower(name=flist_username,
                         established=datetime_now_tz(),
@@ -402,6 +410,9 @@ class FollowerApplicationHandler(LoginApplicationHandler):
                 if flist_following_row is not None:
                     new_unfollowed_row = self.db_new_unfollowed(flist_username)
 
+                    # since we've confirmed state via a UI action, delete any existing unfollowed rows, if any exist:
+                    self.db_delete_all_unfollowed(flist_username)
+
                     self.session.add(new_unfollowed_row)
                     self.session.delete(flist_following_row)
                     self.session.commit()
@@ -559,6 +570,7 @@ class FollowerApplicationHandler(LoginApplicationHandler):
                 self.last_action_mark()
 
                 if self.has_unfollow_confirm():
+                    self.repos_cursor() # will do nothing if not implemented by subclass
                     unfollow_confirm_button = self.unfollow_confirm_button()
                     unfollow_confirm_button.click()
 
@@ -572,12 +584,7 @@ class FollowerApplicationHandler(LoginApplicationHandler):
                 # update database:
 
                 # since we've confirmed state via a UI action, delete any existing unfollowed rows, if any exist:
-                existing_unfollowed_rows = self.db_get_all_unfollowed(flist_username)
-                existing_unfollowed_rows_count = existing_unfollowed_rows.count()
-                if existing_unfollowed_rows_count > 0:
-                    self.log.warn(f"Removing {existing_unfollowed_rows_count} existing unfollowed records "
-                                  f"for '{flist_username}' from db.")
-                    existing_unfollowed_rows.delete()
+                self.db_delete_all_unfollowed(flist_username)
 
                 self.session.delete(flist_following_row)
 

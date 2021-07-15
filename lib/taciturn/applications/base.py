@@ -352,6 +352,14 @@ class BaseApplicationHandler(ABC):
     def open_tab_chord(self):
         return Keys.COMMAND + 't' + Keys.ENTER
 
+    def _document_scroll_top(self):
+        return self.driver.execute_script('return document.documentElement.scrollTop || document.body.scrollTop;')
+
+    def _document_scroll_left(self):
+        return self.driver.execute_script('return document.documentElement.scrollLeft || document.body.scrollLeft;')
+
+    def repos_cursor(self):
+        return False
 
 # app state exceptions:
 
