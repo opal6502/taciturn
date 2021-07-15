@@ -355,7 +355,16 @@ class BaseApplicationHandler(ABC):
     def kill_intermittent_popover(self, timeout=0):
         return False
 
+    def _document_scroll_top(self):
+        return self.driver.execute_script('return document.documentElement.scrollTop || document.body.scrollTop;')
 
+    def _document_scroll_left(self):
+        return self.driver.execute_script('return document.documentElement.scrollLeft || document.body.scrollLeft;')
+
+    def repos_cursor(self):
+        return False
+
+      
 # app state exceptions:
 
 class ApplicationHandlerException(Exception):

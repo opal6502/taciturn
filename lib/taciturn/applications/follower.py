@@ -584,6 +584,7 @@ class FollowerApplicationHandler(LoginApplicationHandler):
                 self.last_action_mark()
 
                 if self.has_unfollow_confirm():
+                    self.repos_cursor() # will do nothing if not implemented by subclass
                     unfollow_confirm_button = self.unfollow_confirm_button()
                     unfollow_confirm_button.click()
 
