@@ -15,7 +15,7 @@
 # along with Tactiurn.  If not, see <https://www.gnu.org/licenses/>.
 
 
-TACITURN_PROJECT_ROOT="/Users/johnk/PycharmProjects/TaciturnDev"
+TACITURN_PROJECT_ROOT="/Users/johnk/PycharmProjects/Taciturn"
 TACITURN_ROOT="$TACITURN_PROJECT_ROOT/Taciturn"
 
 TACITURN_PYTHON_LIB="$TACITURN_ROOT/lib"

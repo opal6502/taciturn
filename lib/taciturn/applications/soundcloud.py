@@ -62,6 +62,15 @@ class SoundcloudHandler(FollowerApplicationHandler, GoogleLoginMixin):
         self._google_login_soundcloud_submit()
         self._close_if_pro_lightbox()
 
+        accept_cookies_button_locator = (By.XPATH, '//button[text() = "Accept Cookies"]')
+        try:
+            accept_cookies_button = self.new_wait(timeout=10)\
+                .until(EC.presence_of_element_located(accept_cookies_button_locator))
+            self.log.info("Clicking on accept cookies button.")
+            accept_cookies_button.click()
+        except TimeoutException:
+            self.log.info("No cookies prompt detected.")
+
         # use the 'Messages' element to verify login!
         messages_element_verify_locator = (By.XPATH, '//*[@id="app"]/header'
                                                      '/div/div[3]/div[2]/a[3]/div/span[contains(.,"Messages")]')
@@ -164,7 +173,7 @@ class SoundcloudHandler(FollowerApplicationHandler, GoogleLoginMixin):
 
     def flist_next(self, flist_entry):
         super().flist_next(None)
-        sleep(0.05)
+        sleep(0.02)
         locator = (By.XPATH, './following-sibling::li[1]')
         return self.new_wait(flist_entry).until(EC.presence_of_element_located(locator))
         
@@ -225,3 +234,14 @@ class SoundcloudHandler(FollowerApplicationHandler, GoogleLoginMixin):
 
     def flist_is_blocked_notice(self):
         return False
+
+    def kill_intermittent_popover(self, timeout=0):
+        try:
+            popover_close_button = (By.XPATH, '/html/body/div/a[contains(@class, "js-inAppModal__close")]')
+            if timeout > 0:
+                self.new_wait(timeout=timeout).until(EC.presence_of_element_located(popover_close_button)).click()
+            else:
+                self.driver.find_element(*popover_close_button).click()
+            return True
+        except (NoSuchElementException, TimeoutException):
+            return False

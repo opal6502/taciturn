@@ -133,6 +133,14 @@ class FollowerApplicationHandler(LoginApplicationHandler):
                           application_id=self.app_account.application_id,
                           taciturn_user_id=self.app_account.taciturn_user_id)
 
+    def db_delete_all_unfollowed(self, flist_username):
+        existing_unfollowed_rows = self.db_get_all_unfollowed(flist_username)
+        existing_unfollowed_rows_count = existing_unfollowed_rows.count()
+        if existing_unfollowed_rows_count > 0:
+            self.log.warn(f"Removing {existing_unfollowed_rows_count} existing unfollowed records "
+                          f"for '{flist_username}' from db.")
+            existing_unfollowed_rows.delete()
+
     def db_new_follower(self, flist_username):
         return Follower(name=flist_username,
                         established=datetime_now_tz(),
@@ -313,6 +321,8 @@ class FollowerApplicationHandler(LoginApplicationHandler):
         self.log.info("Starting user following session.")
         self.log.debug(f"Following quota = {quota or 'n/a'}")
 
+        self.kill_intermittent_popover(timeout=10)
+
         if self.use_listq:
             target_account = self.targets_listq.read_random()
             self.log.info(f"listq target = '{target_account}'")
@@ -330,6 +340,8 @@ class FollowerApplicationHandler(LoginApplicationHandler):
         self.stats.reset_failure_count()
 
         while quota is None or self.stats.get_operation_count() < quota:
+            self.kill_intermittent_popover()
+
             if self.flist_entry_load_timeout > 0:
                 sleep(self.flist_entry_load_timeout)
             self.element_scroll_to(flist_entry, y_offset=header_overlap_y)
@@ -401,6 +413,11 @@ class FollowerApplicationHandler(LoginApplicationHandler):
                 flist_following_row = self.db_get_following(flist_username)
                 if flist_following_row is not None:
                     new_unfollowed_row = self.db_new_unfollowed(flist_username)
+
+                    # since we've confirmed state via a UI action, delete any existing unfollowed rows, if any exist:
+                    self.db_delete_all_unfollowed(flist_username)
+
+                    self.kill_intermittent_popover()
 
                     self.session.add(new_unfollowed_row)
                     self.session.delete(flist_following_row)
@@ -475,11 +492,15 @@ class FollowerApplicationHandler(LoginApplicationHandler):
     def start_unfollowing(self, quota=None, follow_back_hiatus=None, mutual_expire_hiatus=None):
         self.log.info("Starting unfollow session.")
         self.log.debug(f"Unfollow quota = {quota or 'n/a'}")
+
+        self.kill_intermittent_popover(timeout=10)
+
         self.goto_following_page()
         if self.flist_start_reload:
             self.driver.refresh()
         if self.flist_load_timeout > 0:
             sleep(self.flist_load_timeout)
+
 
         follow_back_hiatus = follow_back_hiatus or self.follow_back_hiatus
         mutual_expire_hiatus = mutual_expire_hiatus or self.mutual_expire_hiatus
@@ -490,6 +511,8 @@ class FollowerApplicationHandler(LoginApplicationHandler):
         self.stats.reset_failure_count()
 
         while quota is None or self.stats.get_operation_count() < quota:
+            self.kill_intermittent_popover()
+
             if self.flist_entry_load_timeout > 0:
                 sleep(self.flist_entry_load_timeout)
             self.element_scroll_to(flist_entry, y_offset=header_overlap_y)
@@ -554,6 +577,8 @@ class FollowerApplicationHandler(LoginApplicationHandler):
                 if self.flist_is_action_limit_notice():
                     raise ApplicationHandlerUserPrivilegeSuspendedException("Unfollow limit encountered, stopping.")
 
+                self.kill_intermittent_popover()
+
                 self.last_action_pause()
                 self.flist_button(flist_entry).click()
                 self.last_action_mark()
@@ -572,12 +597,7 @@ class FollowerApplicationHandler(LoginApplicationHandler):
                 # update database:
 
                 # since we've confirmed state via a UI action, delete any existing unfollowed rows, if any exist:
-                existing_unfollowed_rows = self.db_get_all_unfollowed(flist_username)
-                existing_unfollowed_rows_count = existing_unfollowed_rows.count()
-                if existing_unfollowed_rows_count > 0:
-                    self.log.warn(f"Removing {existing_unfollowed_rows_count} existing unfollowed records "
-                                  f"for '{flist_username}' from db.")
-                    existing_unfollowed_rows.delete()
+                self.db_delete_all_unfollowed(flist_username)
 
                 self.session.delete(flist_following_row)
 
@@ -597,6 +617,9 @@ class FollowerApplicationHandler(LoginApplicationHandler):
 
     def update_following(self):
         self.log.info("Updating following data.")
+
+        self.kill_intermittent_popover(timeout=10)
+
         self.goto_following_page()
         if self.flist_start_reload:
             self.driver.refresh()
@@ -607,6 +630,8 @@ class FollowerApplicationHandler(LoginApplicationHandler):
         entries_added = 0
 
         while True:
+            self.kill_intermittent_popover()
+
             if self.flist_entry_load_timeout > 0:
                 sleep(self.flist_entry_load_timeout)
             if self.flist_is_empty(flist_entry):
@@ -632,6 +657,9 @@ class FollowerApplicationHandler(LoginApplicationHandler):
 
     def update_followers(self, new_entries_first=True):
         self.log.info("Updating followers data.")
+
+        self.kill_intermittent_popover(timeout=10)
+
         self.goto_followers_page()
         if self.flist_start_reload:
             self.driver.refresh()
@@ -642,6 +670,8 @@ class FollowerApplicationHandler(LoginApplicationHandler):
         entries_added = 0
 
         while True:
+            self.kill_intermittent_popover()
+
             if self.flist_entry_load_timeout > 0:
                 sleep(self.flist_entry_load_timeout)
             if self.flist_is_empty(flist_entry):

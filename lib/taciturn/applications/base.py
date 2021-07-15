@@ -352,6 +352,9 @@ class BaseApplicationHandler(ABC):
     def open_tab_chord(self):
         return Keys.COMMAND + 't' + Keys.ENTER
 
+    def kill_intermittent_popover(self, timeout=0):
+        return False
+
 
 # app state exceptions:
 
