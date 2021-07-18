@@ -3,7 +3,6 @@
 # Edit at https://www.toptal.com/developers/gitignore?templates=python,database,images,macos,windows,linux
 
 ## local junk:
-db/
 
 ## site-specific cookies
 cookies/*.txt

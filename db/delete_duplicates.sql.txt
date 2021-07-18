@@ -1,0 +1,3 @@
+-- Delete multiples from taciturn db:
+
+DELETE FROM unfollowed WHERE id NOT IN (SELECT min(id) FROM unfollowed GROUP BY name, taciturn_user_id);
