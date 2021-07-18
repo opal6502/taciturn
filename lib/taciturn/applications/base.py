@@ -363,8 +363,8 @@ class BaseApplicationHandler(ABC):
 
     def repos_cursor(self):
         return False
-
-
+    
+      
 # app state exceptions:
 
 class ApplicationHandlerException(Exception):
